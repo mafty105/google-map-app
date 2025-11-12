@@ -133,6 +133,45 @@ See the interactive API docs at http://localhost:8000/docs when the server is ru
 - `POST /api/chat` - Send chat message (to be implemented)
 - More endpoints will be added as development progresses
 
+## Conversation Management
+
+The backend manages multi-turn conversations with a state machine:
+
+### Conversation States
+
+1. **INITIAL** - Greeting and first request
+2. **GATHERING_PREFERENCES** - Asking clarifying questions
+3. **GENERATING_PLAN** - Creating itinerary with AI
+4. **PRESENTING_PLAN** - Showing results
+5. **REFINING** - User requests changes
+6. **COMPLETED** - Final confirmation
+
+### Session Storage
+
+- In-memory storage for development
+- Automatic cleanup of expired sessions
+- Configurable timeout (default: 30 minutes)
+- Background cleanup task runs every 10 minutes
+
+### Usage Example
+
+```python
+from app.services.conversation_manager import conversation_manager
+
+# Create new session
+session = conversation_manager.create_session()
+
+# Add messages
+conversation_manager.add_user_message(session.session_id, "Hello")
+conversation_manager.add_assistant_message(session.session_id, "Hi!")
+
+# Update state
+conversation_manager.transition_state(session.session_id, ConversationState.GATHERING_PREFERENCES)
+
+# Update preferences
+conversation_manager.update_preferences(session.session_id, activity_type="active/outdoor")
+```
+
 ## Environment Variables
 
 See `.env.example` for all available configuration options.

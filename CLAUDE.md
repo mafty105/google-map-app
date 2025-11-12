@@ -229,14 +229,16 @@ Used for additional data:
 - `POST /api/plan/generate` - Generate plan
 - `POST /api/plan/refine` - Refine plan
 
-## Important Files
+## Important Documentation
 
-- **PROJECT_SPECIFICATION.md** - Complete project spec (v2.0)
-- **GCP_SETUP_GUIDE.md** - Manual API setup instructions
-- **TESTING_POLICY.md** - Testing guidelines (READ THIS!)
-- **backend/app/config.py** - All configuration settings
-- **backend/app/main.py** - FastAPI app with middleware
-- **frontend/src/App.jsx** - Main React component
+- [PROJECT_SPECIFICATION.md](./PROJECT_SPECIFICATION.md) - Complete project spec (v2.0)
+- [GCP_SETUP_GUIDE.md](./GCP_SETUP_GUIDE.md) - Manual API setup instructions
+- [TESTING_POLICY.md](./TESTING_POLICY.md) - Testing guidelines (READ THIS!)
+- [DESIGN_GUIDELINE.md](./DESIGN_GUIDELINE.md) - Visual design system (IKYU-based, for frontend)
+- [backend/README.md](./backend/README.md) - Backend setup and usage
+- [frontend/README.md](./frontend/README.md) - Frontend setup and usage
+
+Use Explore agent or Glob/Grep to find specific code files as needed.
 
 ## Common Patterns
 
@@ -250,10 +252,17 @@ Used for additional data:
 
 ### Adding a New Frontend Component
 
+**Important:** Follow DESIGN_GUIDELINE.md for all visual design
+
 1. Create component in `frontend/src/components/`
 2. Import in parent component
 3. Use native fetch for API calls
-4. Keep it simple - this is a demo
+4. Apply IKYU-based design system:
+   - Colors: Primary blue (#1a4473), Accent blue (#008dde)
+   - Typography: Hiragino, Noto Sans JP
+   - Spacing: 8px grid system
+   - Japanese language support
+5. Keep it simple - this is a demo
 
 ## GCP Project
 

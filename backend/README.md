@@ -167,12 +167,14 @@ See the interactive API docs at http://localhost:8000/docs when the server is ru
 - `GET /docs` - Interactive API documentation (Swagger UI)
 - `GET /openapi.json` - OpenAPI schema
 
-**API Endpoints (to be implemented):**
-- `POST /api/chat/session` - Create new chat session
-- `POST /api/chat` - Send chat message
-- `POST /api/plan/generate` - Generate travel plan
-- `POST /api/plan/refine` - Refine existing plan
-- More endpoints will be added as development progresses
+**Chat Endpoints:**
+- `POST /api/chat/session` - Create new chat session ✓
+- `POST /api/chat` - Send chat message ✓
+- `GET /api/chat/session/{id}` - Get conversation history ✓
+
+**Plan Endpoints (to be implemented):**
+- `POST /api/plan/generate` - Generate travel plan (requires Issue #4)
+- `POST /api/plan/refine` - Refine existing plan (requires Issue #4)
 
 ## Conversation Management
 
@@ -211,6 +213,32 @@ conversation_manager.transition_state(session.session_id, ConversationState.GATH
 
 # Update preferences
 conversation_manager.update_preferences(session.session_id, activity_type="active/outdoor")
+```
+
+### API Usage Example
+
+```bash
+# Create a new session
+curl -X POST http://localhost:8000/api/chat/session
+
+# Response:
+# {"session_id":"abc-123-def","message":"Session created successfully"}
+
+# Send a message
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"abc-123-def","message":"週末片道1時間くらいでいける候補"}'
+
+# Response:
+# {
+#   "session_id": "abc-123-def",
+#   "response": "アクティブな場所をお探しですか、それともインドアの施設がよいですか?",
+#   "state": "GATHERING_PREFERENCES",
+#   "quick_replies": ["アクティブ", "インドア"]
+# }
+
+# Get conversation history
+curl http://localhost:8000/api/chat/session/abc-123-def
 ```
 
 ## Environment Variables

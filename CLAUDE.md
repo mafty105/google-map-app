@@ -231,13 +231,24 @@ Used for additional data:
 
 ## Important Files
 
-- **PROJECT_SPECIFICATION.md** - Complete project spec (v2.0)
-- **GCP_SETUP_GUIDE.md** - Manual API setup instructions
-- **TESTING_POLICY.md** - Testing guidelines (READ THIS!)
-- **DESIGN_GUIDELINE.md** - Visual design system (IKYU-based, for frontend)
-- **backend/app/config.py** - All configuration settings
-- **backend/app/main.py** - FastAPI app with middleware
-- **frontend/src/App.jsx** - Main React component
+**Project Documentation:**
+- [PROJECT_SPECIFICATION.md](./PROJECT_SPECIFICATION.md) - Complete project spec (v2.0)
+- [GCP_SETUP_GUIDE.md](./GCP_SETUP_GUIDE.md) - Manual API setup instructions
+- [TESTING_POLICY.md](./TESTING_POLICY.md) - Testing guidelines (READ THIS!)
+- [DESIGN_GUIDELINE.md](./DESIGN_GUIDELINE.md) - Visual design system (IKYU-based, for frontend)
+
+**Backend Key Files:**
+- [backend/README.md](./backend/README.md) - Backend setup and usage
+- [backend/app/config.py](./backend/app/config.py) - All configuration settings
+- [backend/app/main.py](./backend/app/main.py) - FastAPI app with middleware
+- [backend/app/models/conversation.py](./backend/app/models/conversation.py) - Conversation state models
+- [backend/app/services/conversation_manager.py](./backend/app/services/conversation_manager.py) - Conversation logic
+- [backend/app/routes/chat.py](./backend/app/routes/chat.py) - Chat API endpoints
+
+**Frontend Key Files:**
+- [frontend/README.md](./frontend/README.md) - Frontend setup and usage
+- [frontend/src/App.jsx](./frontend/src/App.jsx) - Main React component
+- [frontend/vite.config.js](./frontend/vite.config.js) - Vite configuration
 
 ## Common Patterns
 

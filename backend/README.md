@@ -69,8 +69,29 @@ uvicorn app.main:app --reload --port 8000
 
 The API will be available at http://localhost:8000
 
-- API Docs: http://localhost:8000/docs
-- Health Check: http://localhost:8000/health
+### Available Endpoints
+
+- **API Docs**: http://localhost:8000/docs (Interactive Swagger UI)
+- **Root**: http://localhost:8000/ (API information)
+- **Health**: http://localhost:8000/health (Simple health check)
+- **Status**: http://localhost:8000/status (Detailed status and configuration)
+
+### Features
+
+**Request Logging**
+- All requests are automatically logged with method, path, and duration
+- Response time is added to headers as `X-Process-Time`
+- Useful for monitoring and debugging
+
+**Error Handling**
+- Global exception handler catches all unhandled errors
+- Returns consistent error responses with details
+- Errors are logged with full stack traces
+
+**CORS Support**
+- Configured for frontend access
+- Allows credentials and all methods
+- Configurable via `CORS_ORIGINS` environment variable
 
 ### Type Checking
 
@@ -94,8 +115,20 @@ ruff check --fix app
 ### Testing
 
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage
+pytest --cov=app --cov-report=html
+
+# Run specific test file
+pytest tests/test_main.py
+
+# Run with verbose output
+pytest -v
 ```
+
+View coverage report at `htmlcov/index.html` after running with `--cov-report=html`.
 
 ## Project Structure
 
@@ -127,10 +160,18 @@ See the interactive API docs at http://localhost:8000/docs when the server is ru
 
 ### Available Endpoints
 
-- `GET /` - Root endpoint
-- `GET /health` - Health check
-- `POST /api/chat/session` - Create new chat session (to be implemented)
-- `POST /api/chat` - Send chat message (to be implemented)
+**Core Endpoints:**
+- `GET /` - Root endpoint with API information
+- `GET /health` - Simple health check (for load balancers)
+- `GET /status` - Detailed status with configuration info
+- `GET /docs` - Interactive API documentation (Swagger UI)
+- `GET /openapi.json` - OpenAPI schema
+
+**API Endpoints (to be implemented):**
+- `POST /api/chat/session` - Create new chat session
+- `POST /api/chat` - Send chat message
+- `POST /api/plan/generate` - Generate travel plan
+- `POST /api/plan/refine` - Refine existing plan
 - More endpoints will be added as development progresses
 
 ## Conversation Management

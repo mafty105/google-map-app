@@ -12,7 +12,6 @@ def test_root_endpoint() -> None:
     response = client.get("/")
     assert response.status_code == 200
 
-
 def test_health_check() -> None:
     """Test health check endpoint."""
     response = client.get("/health")
@@ -22,6 +21,7 @@ def test_health_check() -> None:
 
 def test_status_endpoint() -> None:
     """Test status endpoint includes session count."""
+
     response = client.get("/status")
     assert response.status_code == 200
 
@@ -29,3 +29,4 @@ def test_status_endpoint() -> None:
     assert data["status"] == "operational"
     assert "active_sessions" in data
     assert isinstance(data["active_sessions"], int)
+

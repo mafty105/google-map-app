@@ -16,7 +16,7 @@ React frontend for the conversational AI travel planner.
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (LTS recommended)
 - pnpm (recommended) or npm
 
 ### Installation

@@ -1,4 +1,4 @@
-import { useState, FormEvent, KeyboardEvent } from 'react';
+import { type FormEvent, type KeyboardEvent, useState } from 'react';
 
 /**
  * ChatInput - Message input component with send button

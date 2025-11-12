@@ -14,15 +14,14 @@ export default function ChatMessage({ message, isUser }: ChatMessageProps) {
       <div
         className={`
           max-w-[70%] px-4 py-3
-          ${isUser
-            ? 'bg-[--color-primary-blue] text-white rounded-[18px_18px_4px_18px]'
-            : 'bg-[--color-gray-100] text-[--color-gray-800] rounded-[18px_18px_18px_4px]'
+          ${
+            isUser
+              ? 'bg-[--color-primary-blue] text-white rounded-[18px_18px_4px_18px]'
+              : 'bg-[--color-gray-100] text-[--color-gray-800] rounded-[18px_18px_18px_4px]'
           }
         `}
       >
-        <p className="text-base leading-relaxed whitespace-pre-wrap">
-          {message}
-        </p>
+        <p className="text-base leading-relaxed whitespace-pre-wrap">{message}</p>
       </div>
     </div>
   );

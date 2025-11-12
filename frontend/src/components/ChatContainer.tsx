@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import ChatMessage from './ChatMessage';
+import { useEffect, useRef, useState } from 'react';
 import ChatInput from './ChatInput';
+import ChatMessage from './ChatMessage';
 import QuickReplies from './QuickReplies';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
@@ -61,11 +61,12 @@ export default function ChatContainer() {
         setSessionId(data.session_id);
 
         // Add initial greeting message
-        setMessages([{
-          text: 'こんにちは！週末のお出かけプランをお手伝いします。\nどこからお出かけされますか？',
-          isUser: false,
-        }]);
-
+        setMessages([
+          {
+            text: 'こんにちは！週末のお出かけプランをお手伝いします。\nどこからお出かけされますか？',
+            isUser: false,
+          },
+        ]);
       } catch (err) {
         setError('セッションの開始に失敗しました。ページを再読み込みしてください。');
         console.error('Failed to initialize session:', err);
@@ -81,7 +82,7 @@ export default function ChatContainer() {
 
     // Add user message to UI immediately
     const userMessage: Message = { text: messageText, isUser: true };
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setQuickReplies([]);
     setIsLoading(true);
     setError(null);
@@ -106,13 +107,12 @@ export default function ChatContainer() {
 
       // Add assistant response to UI
       const assistantMessage: Message = { text: data.response, isUser: false };
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages((prev) => [...prev, assistantMessage]);
 
       // Set quick replies if available
       if (data.quick_replies && data.quick_replies.length > 0) {
         setQuickReplies(data.quick_replies);
       }
-
     } catch (err) {
       setError('メッセージの送信に失敗しました。もう一度お試しください。');
       console.error('Failed to send message:', err);
@@ -131,9 +131,7 @@ export default function ChatContainer() {
       {/* Header */}
       <header className="border-b border-[--color-gray-200] bg-white">
         <div className="max-w-4xl mx-auto px-6 py-4">
-          <h1 className="text-2xl font-bold text-[--color-primary-blue]">
-            週末お出かけプランナー
-          </h1>
+          <h1 className="text-2xl font-bold text-[--color-primary-blue]">週末お出かけプランナー</h1>
           <p className="text-sm text-[--color-gray-500] mt-1">
             家族で楽しめる週末のお出かけプランを提案します
           </p>
@@ -152,11 +150,7 @@ export default function ChatContainer() {
 
           {/* Messages */}
           {messages.map((msg, index) => (
-            <ChatMessage
-              key={index}
-              message={msg.text}
-              isUser={msg.isUser}
-            />
+            <ChatMessage key={index} message={msg.text} isUser={msg.isUser} />
           ))}
 
           {/* Loading Indicator */}
@@ -164,9 +158,18 @@ export default function ChatContainer() {
             <div className="flex justify-start mb-4">
               <div className="bg-[--color-gray-100] px-4 py-3 rounded-[18px_18px_18px_4px]">
                 <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  <div
+                    className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
+                    style={{ animationDelay: '0ms' }}
+                  ></div>
+                  <div
+                    className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
+                    style={{ animationDelay: '150ms' }}
+                  ></div>
+                  <div
+                    className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
+                    style={{ animationDelay: '300ms' }}
+                  ></div>
                 </div>
               </div>
             </div>
@@ -174,10 +177,7 @@ export default function ChatContainer() {
 
           {/* Quick Replies */}
           {!isLoading && quickReplies.length > 0 && (
-            <QuickReplies
-              replies={quickReplies}
-              onReplyClick={handleQuickReply}
-            />
+            <QuickReplies replies={quickReplies} onReplyClick={handleQuickReply} />
           )}
 
           {/* Scroll anchor */}
@@ -186,10 +186,7 @@ export default function ChatContainer() {
       </div>
 
       {/* Input */}
-      <ChatInput
-        onSendMessage={sendMessage}
-        disabled={isLoading || !sessionId}
-      />
+      <ChatInput onSendMessage={sendMessage} disabled={isLoading || !sessionId} />
     </div>
   );
 }

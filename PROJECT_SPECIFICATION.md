@@ -15,16 +15,52 @@
 ### Concept
 An AI-powered web application that helps parents plan optimal weekend outings with their children. The app leverages Google's Vertex AI with Google Maps grounding to provide personalized, realistic travel plans based on the user's location, available time, and transportation options.
 
+**Key Innovation**: Conversational AI interface that guides users through an interactive planning process, asking clarifying questions to refine recommendations before presenting optimal routes and schedules with Google Maps integration.
+
 ### Target Users
 - Parents and guardians with children
 - Families looking for weekend activity ideas
 - Users seeking convenient, optimized travel plans
 
 ### Core Value Proposition
+- **Conversational Planning**: Interactive dialogue that clarifies preferences step-by-step
 - **AI-Powered Recommendations**: Uses LLM to understand family needs and preferences
 - **Real-World Accuracy**: Google Maps grounding ensures all recommendations are based on actual places, accurate distances, and real-time travel information
 - **Personalized Planning**: Considers user's location, time constraints, and transportation
 - **Complete Itineraries**: Provides destinations, lunch spots, and full daily schedules
+- **Iterative Refinement**: Users can request modifications to generated plans
+
+### User Interaction Flow Example
+
+```
+User: 週末片道1時間くらいでいける候補
+(Weekend destinations about 1 hour one-way)
+
+Agent: アクティブな場所をお探しですか、それともインドアの施設がよいですか?
+(Are you looking for active/outdoor places or indoor facilities?)
+
+User: アクティブ
+(Active/outdoor)
+
+Agent: 昼食や夕食はお取りになりますか?
+(Will you be having lunch or dinner?)
+
+User: とります
+(Yes)
+
+Agent: 最適なプランを検討中...
+(Considering optimal plans...)
+
+Agent: Google Mapのグラウンディングを用いて、以下の1日のルートと計画を提案します:
+(Based on Google Maps grounding, here's a suggested daily route and plan:)
+
+[Interactive map with route + Timeline with destinations and restaurants]
+
+User: okay / もう少し小さい子が遊べるところで
+(okay / somewhere more suitable for younger children)
+
+Agent: [Refines plan based on feedback]
+```
 
 ---
 
@@ -99,15 +135,19 @@ The application requires the following inputs from users:
 
 ### Functional Requirements
 
-**FR1**: System shall accept user location via text input or geolocation
-**FR2**: System shall integrate with Vertex AI for natural language processing and plan generation
-**FR3**: System shall use Google Maps grounding to validate all location recommendations
-**FR4**: System shall calculate accurate travel times based on selected transportation mode
-**FR5**: System shall generate a complete daily schedule with time allocations
-**FR6**: System shall provide at least 3 destination options per query
-**FR7**: System shall recommend lunch spots within 1km of suggested destinations
-**FR8**: System shall display results on an interactive map
-**FR9**: System shall allow users to regenerate plans with different parameters
+**FR1**: System shall provide a conversational chat interface for user interaction
+**FR2**: System shall accept user location via text input or geolocation
+**FR3**: System shall ask clarifying questions to understand user preferences (activity type, meals, child age, etc.)
+**FR4**: System shall integrate with Vertex AI for natural language processing and plan generation
+**FR5**: System shall use Google Maps grounding to validate all location recommendations
+**FR6**: System shall calculate accurate travel times based on selected transportation mode
+**FR7**: System shall generate a complete daily schedule with time allocations
+**FR8**: System shall provide at least 3 destination options per query
+**FR9**: System shall recommend lunch spots within 1km of suggested destinations
+**FR10**: System shall display results on an interactive map
+**FR11**: System shall maintain conversation context throughout the planning session
+**FR12**: System shall allow users to request plan modifications through natural language
+**FR13**: System shall support multi-turn conversations for iterative refinement
 
 ### Non-Functional Requirements
 
@@ -167,6 +207,85 @@ The application requires the following inputs from users:
 └─────────────────────────────────────────┘
 ```
 
+### User Interface Design
+
+#### Layout Structure
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Family Weekend Planner                 [Settings]  │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  ┌────────────────────────────────────────────┐   │
+│  │ Chat Messages Area (Scrollable)            │   │
+│  │                                            │   │
+│  │  User:  週末片道1時間くらいでいける候補       │   │
+│  │                                            │   │
+│  │  Agent: アクティブな場所をお探しですか、    │   │
+│  │         それともインドアの施設がよいですか?  │   │
+│  │         [アクティブ] [インドア]             │   │
+│  │                                            │   │
+│  │  User:  アクティブ                         │   │
+│  │                                            │   │
+│  │  Agent: 昼食や夕食はお取りになりますか?      │   │
+│  │         [とる] [とらない]                   │   │
+│  │                                            │   │
+│  │  User:  とります                           │   │
+│  │                                            │   │
+│  │  Agent: 🗺️ プランを作成しました!           │   │
+│  │  ┌──────────────────────────────────────┐ │   │
+│  │  │  [Interactive Google Map]            │ │   │
+│  │  │  📍 Destination 1                    │ │   │
+│  │  │  📍 Restaurant                       │ │   │
+│  │  │  📍 Destination 2                    │ │   │
+│  │  └──────────────────────────────────────┘ │   │
+│  │                                            │   │
+│  │  📅 スケジュール:                          │   │
+│  │  09:00 - 出発                             │   │
+│  │  10:00 - 目的地1到着 (所沢航空公園)          │   │
+│  │  12:00 - ランチ (family restaurant)       │   │
+│  │  13:30 - 目的地2 (トトロの森)               │   │
+│  │  16:00 - 帰宅                             │   │
+│  │                                            │   │
+│  │  [👍 このプランで決定] [🔄 修正する]        │   │
+│  │                                            │   │
+│  └────────────────────────────────────────────┘   │
+│                                                     │
+│  ┌────────────────────────────────────────────┐   │
+│  │ メッセージを入力...                  [送信] │   │
+│  └────────────────────────────────────────────┘   │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+#### Key UI Components
+
+1. **Chat Message Bubble**
+   - User messages: Right-aligned, blue background
+   - Agent messages: Left-aligned, gray background
+   - Support for text, buttons, maps, and structured data
+
+2. **Quick Reply Buttons**
+   - Appear below agent questions
+   - Clickable options for common responses
+   - Auto-fill chat input on click
+
+3. **Embedded Map Component**
+   - Appears within agent messages
+   - Shows route with markers
+   - Interactive (zoom, pan, click markers)
+   - Fixed height (e.g., 400px) with expand option
+
+4. **Schedule Timeline**
+   - Time-ordered list of activities
+   - Duration and travel time indicators
+   - Place photos and brief descriptions
+
+5. **Action Buttons**
+   - "Confirm Plan" - Finalize and save
+   - "Modify Plan" - Request changes
+   - "Start Over" - Reset conversation
+
 ### Recommended Tech Stack
 
 #### Backend
@@ -202,55 +321,96 @@ The application requires the following inputs from users:
 4. **Places API** - For additional place details
 5. **Directions API** - For route planning
 
-### Data Flow
+### Data Flow (Conversational Mode)
 
-1. **User Input**
+1. **Initial User Message**
    ```
-   User enters:
-   - Location: "Tokyo Station"
-   - Travel time: "1 hour"
-   - Has car: "Yes"
-   - Children age: "5-10 years"
+   User: "週末片道1時間くらいでいける候補"
    ```
 
-2. **Backend Processing**
+2. **First Backend Processing**
    ```javascript
-   // Geocode user location
-   const coordinates = await geocodeLocation("Tokyo Station");
+   // Create new session
+   const sessionId = generateUUID();
 
-   // Construct prompt for Vertex AI
+   // Parse initial request with Vertex AI
+   const extractedInfo = await vertexAI.generateContent({
+     model: "gemini-1.5-pro",
+     prompt: `Extract travel time and location from: "${userMessage}"`,
+     temperature: 0.3
+   });
+
+   // Initialize conversation state
+   const conversationState = {
+     sessionId,
+     state: "GATHERING_PREFERENCES",
+     userPreferences: {
+       travelTime: { value: 60, unit: "minutes", direction: "one-way" }
+     }
+   };
+
+   // Generate clarifying question
+   const response = "アクティブな場所をお探しですか、それともインドアの施設がよいですか?";
+   ```
+
+3. **Subsequent Exchanges**
+   ```javascript
+   // User: "アクティブ"
+   conversationState.userPreferences.activityType = "active/outdoor";
+
+   // Agent: "昼食や夕食はお取りになりますか?"
+   // User: "とります"
+   conversationState.userPreferences.meals = ["lunch"];
+
+   // Check if enough info collected
+   if (hasEnoughPreferences(conversationState)) {
+     conversationState.state = "GENERATING_PLAN";
+   }
+   ```
+
+4. **Plan Generation**
+   ```javascript
+   // Construct comprehensive prompt
    const prompt = `
-   I need a family-friendly weekend plan:
-   - Current location: Tokyo Station (35.6812, 139.7671)
-   - Maximum travel time: 1 hour by car
-   - Children age: 5-10 years
-   - Need: destination recommendations, lunch spots, and complete schedule
+   Create a family-friendly weekend plan:
+   - Current location: ${userPreferences.location}
+   - Maximum travel time: ${userPreferences.travelTime.value} minutes one-way
+   - Activity type: ${userPreferences.activityType}
+   - Meals: ${userPreferences.meals.join(", ")}
 
-   Please provide 3 destination options with lunch recommendations and a detailed schedule.
+   Provide a detailed itinerary with destinations, restaurants, and schedule.
    `;
 
    // Call Vertex AI with Google Maps grounding
-   const response = await vertexAI.generateContent({
+   const plan = await vertexAI.generateContent({
      model: "gemini-1.5-pro",
      prompt: prompt,
-     grounding: {
-       googleMaps: true
-     }
+     tools: [{ googleMaps: {} }]
    });
+
+   conversationState.generatedPlan = plan;
+   conversationState.state = "PRESENTING_PLAN";
    ```
 
-3. **Response Processing**
-   - Parse LLM response
-   - Extract location names and coordinates
-   - Validate all locations exist via Maps APIs
-   - Calculate accurate travel times
-   - Format schedule with time slots
+5. **Plan Refinement (if requested)**
+   ```javascript
+   // User: "もう少し小さい子が遊べるところで"
+   const refinedPlan = await vertexAI.generateContent({
+     model: "gemini-1.5-pro",
+     prompt: `Modify this plan for younger children: ${JSON.stringify(currentPlan)}
+              User feedback: もう少し小さい子が遊べるところで`,
+     tools: [{ googleMaps: {} }]
+   });
 
-4. **Frontend Display**
-   - Render interactive map with markers
-   - Display schedule in timeline format
-   - Show place details and photos
-   - Provide navigation links
+   conversationState.generatedPlan = refinedPlan;
+   ```
+
+6. **Frontend Display**
+   - Render chat messages in conversation flow
+   - Embed interactive map within agent message
+   - Display schedule in timeline format within chat
+   - Show place cards with photos in agent message
+   - Provide quick action buttons for refinement
 
 ### Component Architecture
 
@@ -275,12 +435,18 @@ src/
 │   │   └── index.html               # Main HTML
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── InputForm.jsx        # User input form
+│   │   │   ├── ChatInterface.jsx    # Main chat UI container
+│   │   │   ├── ChatMessage.jsx      # Individual message bubble
+│   │   │   ├── ChatInput.jsx        # User input field
 │   │   │   ├── MapDisplay.jsx       # Google Maps component
 │   │   │   ├── Schedule.jsx         # Daily schedule display
-│   │   │   └── PlaceCard.jsx        # Destination cards
+│   │   │   ├── PlaceCard.jsx        # Destination cards
+│   │   │   └── PlanSummary.jsx      # Final plan presentation
 │   │   ├── services/
-│   │   │   └── api.js               # Backend API calls
+│   │   │   ├── api.js               # Backend API calls
+│   │   │   └── conversationState.js # Manage conversation context
+│   │   ├── hooks/
+│   │   │   └── useChat.js           # Custom hook for chat logic
 │   │   ├── App.jsx                  # Main app component
 │   │   └── main.jsx                 # Entry point
 │   └── styles/
@@ -290,6 +456,64 @@ src/
 ├── .gitignore                       # Git ignore file
 ├── package.json                     # Dependencies
 └── README.md                        # Documentation
+```
+
+### Conversation Flow and State Management
+
+#### Conversation States
+The application manages conversation through distinct states:
+
+1. **INITIAL** - Greeting and first request
+   - User provides initial request (e.g., "weekend destinations 1 hour away")
+   - System extracts travel time, general intent
+
+2. **GATHERING_PREFERENCES** - Asking clarifying questions
+   - Activity type (active/outdoor vs indoor)
+   - Meal preferences (lunch, dinner, both, none)
+   - Child age range
+   - Transportation mode
+   - Special requirements
+
+3. **GENERATING_PLAN** - Processing and creating itinerary
+   - Call Vertex AI with collected preferences
+   - Use Google Maps grounding for locations
+   - Calculate routes and times
+
+4. **PRESENTING_PLAN** - Showing results
+   - Display map with route
+   - Show timeline/schedule
+   - Present destination and restaurant details
+
+5. **REFINING** - Iterative improvements
+   - User requests changes ("younger kids", "more outdoor activities")
+   - System modifies plan based on feedback
+   - Return to PRESENTING_PLAN
+
+6. **COMPLETED** - Final confirmation
+   - User satisfied with plan
+   - Option to save/share/export
+
+#### Conversation Context Structure
+```javascript
+{
+  sessionId: "uuid",
+  state: "GATHERING_PREFERENCES",
+  userPreferences: {
+    location: { address: "Tokyo Station", lat: 35.6812, lng: 139.7671 },
+    travelTime: { value: 60, unit: "minutes", direction: "one-way" },
+    activityType: "active/outdoor",
+    meals: ["lunch"],
+    childAge: null,
+    transportation: null,
+    specialRequirements: []
+  },
+  conversationHistory: [
+    { role: "user", content: "週末片道1時間くらいでいける候補", timestamp: "..." },
+    { role: "assistant", content: "アクティブな場所をお探しですか...", timestamp: "..." }
+  ],
+  generatedPlan: null,
+  lastUpdated: "timestamp"
+}
 ```
 
 ### API Integration Details
@@ -393,35 +617,51 @@ const distanceMatrixUrl = `https://maps.googleapis.com/maps/api/distancematrix/j
 - [ ] Configure environment variables
 - [ ] Create health check endpoint
 
-**2.2 Vertex AI Integration**
+**2.2 Conversation Management**
+- [ ] Implement session storage (in-memory or Redis)
+- [ ] Create conversation state manager
+- [ ] Design state transition logic
+- [ ] Implement context extraction from messages
+- [ ] Add session timeout and cleanup
+
+**2.3 Vertex AI Integration**
 - [ ] Install Google Cloud libraries
 - [ ] Implement authentication
 - [ ] Create Vertex AI service module
 - [ ] Test basic LLM calls with grounding
+- [ ] Implement conversation context passing to LLM
 
-**2.3 Prompt Engineering**
-- [ ] Design prompt templates
+**2.4 Prompt Engineering**
+- [ ] Design prompt templates for clarifying questions
+- [ ] Create prompts for plan generation
+- [ ] Create prompts for plan refinement
 - [ ] Add dynamic parameter injection
 - [ ] Handle edge cases (no results, errors)
 - [ ] Test different prompt variations
 
-**2.4 Maps API Integration**
+**2.5 Maps API Integration**
 - [ ] Implement geocoding service
 - [ ] Create places lookup functions
 - [ ] Add directions calculation
 - [ ] Implement distance matrix for multiple destinations
 
-**2.5 Response Processing**
+**2.6 Response Processing**
 - [ ] Parse LLM responses
 - [ ] Extract location data
 - [ ] Validate and enrich with Maps APIs
 - [ ] Format schedule data structure
+- [ ] Extract structured plan data from LLM responses
 
-**2.6 API Endpoints**
-- [ ] POST /api/plan - Generate travel plan
+**2.7 API Endpoints**
+- [ ] POST /api/chat - Handle conversational messages
+- [ ] POST /api/chat/session - Create new chat session
+- [ ] GET /api/chat/session/:id - Retrieve conversation history
+- [ ] POST /api/plan/generate - Generate final travel plan
+- [ ] POST /api/plan/refine - Refine existing plan based on feedback
 - [ ] GET /api/geocode - Geocode address
 - [ ] GET /api/place/:id - Get place details
 - [ ] Error handling and validation
+- [ ] Session management and cleanup
 
 ### Phase 3: Frontend Development (Week 4-5)
 
@@ -431,12 +671,15 @@ const distanceMatrixUrl = `https://maps.googleapis.com/maps/api/distancematrix/j
 - [ ] Set up routing (if using React)
 - [ ] Configure build tools
 
-**3.2 User Input Form**
-- [ ] Create location input with autocomplete
-- [ ] Add travel time selector
-- [ ] Add transportation mode toggle
-- [ ] Optional preferences fields
-- [ ] Form validation
+**3.2 Chat Interface Development**
+- [ ] Create main chat container with message history
+- [ ] Design chat message bubbles (user vs agent)
+- [ ] Implement chat input field with send button
+- [ ] Add typing indicators for agent responses
+- [ ] Handle location input with autocomplete in chat
+- [ ] Create quick reply buttons for common responses
+- [ ] Implement conversation state management
+- [ ] Add message timestamp display
 
 **3.3 Google Maps Integration**
 - [ ] Load Maps JavaScript API
@@ -445,12 +688,15 @@ const distanceMatrixUrl = `https://maps.googleapis.com/maps/api/distancematrix/j
 - [ ] Implement info windows
 - [ ] Add route visualization
 
-**3.4 Results Display**
-- [ ] Create schedule timeline component
-- [ ] Design destination cards
-- [ ] Show lunch recommendations
-- [ ] Add photos from Places API
-- [ ] Display travel times and distances
+**3.4 Results Display in Chat**
+- [ ] Create embedded map component within chat messages
+- [ ] Design schedule timeline component for chat display
+- [ ] Create destination cards shown in agent messages
+- [ ] Show lunch recommendations in structured format
+- [ ] Add photos from Places API in message cards
+- [ ] Display travel times and distances in chat
+- [ ] Implement expandable/collapsible plan details
+- [ ] Add "Refine Plan" quick actions
 
 **3.5 User Experience**
 - [ ] Add loading states
@@ -740,6 +986,27 @@ VITE_BACKEND_URL=http://localhost:3000
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 2.0
 **Last Updated**: 2025-11-12
 **Status**: Ready for Implementation
+
+## Changelog
+
+### Version 2.0 (2025-11-12)
+- Added conversational AI interface as primary interaction mode
+- Introduced conversation states and flow management
+- Added user interaction flow example with Japanese/English dialogue
+- Updated UI design to chat-based interface
+- Added conversation context structure
+- Updated data flow to support multi-turn conversations
+- Modified functional requirements to include chat capabilities
+- Updated component architecture for chat interface
+- Added session management requirements
+- Enhanced API endpoints for conversational mode
+- Updated implementation roadmap for chat features
+
+### Version 1.0 (2025-11-12)
+- Initial specification document
+- Form-based user interface design
+- Basic architecture and tech stack
+- Implementation roadmap

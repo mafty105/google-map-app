@@ -7,7 +7,7 @@ React frontend for the conversational AI travel planner.
 - **React 18** - UI library
 - **Vite** - Build tool and dev server
 - **Google Maps JavaScript API** - Map display
-- **Axios** - HTTP client
+- **Fetch API** - Native HTTP client
 
 ## Setup
 
@@ -119,18 +119,22 @@ frontend/
 The frontend communicates with the backend API at `http://localhost:8000/api`:
 
 ```javascript
-// Example API call
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL + '/api',
-});
+// Example API call using fetch
+const baseURL = import.meta.env.VITE_BACKEND_URL + '/api';
 
 // Send chat message
-const response = await api.post('/chat', {
-  sessionId: '...',
-  message: '週末片道1時間くらいでいける候補'
+const response = await fetch(`${baseURL}/chat`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    sessionId: '...',
+    message: '週末片道1時間くらいでいける候補'
+  })
 });
+
+const data = await response.json();
 ```
 
 ## Development Notes

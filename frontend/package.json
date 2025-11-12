@@ -12,8 +12,7 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@googlemaps/js-api-loader": "^1.16.2",
-    "axios": "^1.6.0"
+    "@googlemaps/js-api-loader": "^1.16.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.routes import chat
 from app.services.conversation_manager import conversation_manager
 
 # Configure logging
@@ -94,6 +95,10 @@ async def log_requests(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
 
     return response
+
+
+# Include routers
+app.include_router(chat.router)
 
 
 # Global exception handler

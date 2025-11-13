@@ -109,9 +109,10 @@ frontend/
 - ✅ Backend API integration
 
 ### Phase 2 (Issue #10)
-- ⏳ Google Maps integration
-- ⏳ Map markers for destinations
-- ⏳ Route visualization
+- ✅ Google Maps integration
+- ✅ Map markers for destinations
+- ✅ Route visualization
+- ✅ Two-column layout (chat + map)
 
 ### Phase 3 (Issue #11)
 - ⏳ Schedule timeline display

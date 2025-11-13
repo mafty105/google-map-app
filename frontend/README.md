@@ -114,9 +114,11 @@ frontend/
 - ⏳ Route visualization
 
 ### Phase 3 (Issue #11)
-- ⏳ Schedule timeline display
-- ⏳ Place cards with photos
-- ⏳ Restaurant recommendations
+- ✅ Schedule timeline display
+- ✅ Place cards with photos
+- ✅ Restaurant recommendations
+- ✅ Plan summary with tabs
+- ✅ Action buttons (Confirm, Modify, Start Over)
 
 ### Phase 4 (Issue #12)
 - ⏳ API service layer

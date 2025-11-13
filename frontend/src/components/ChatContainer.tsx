@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 import QuickReplies from './QuickReplies';
+import MapDisplay from './MapDisplay';
 import PlanSummary from './PlanSummary';
 import type { TravelPlan } from '../types/plan';
 import { mockPlan } from '../data/mockPlan';
@@ -11,6 +12,12 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 interface Message {
   text: string;
   isUser: boolean;
+}
+
+interface Location {
+  lat: number;
+  lng: number;
+  name?: string;
 }
 
 interface ChatResponse {
@@ -37,6 +44,15 @@ export default function ChatContainer() {
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<TravelPlan | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Map state
+  const [mapCenter, setMapCenter] = useState<Location>({
+    lat: 35.6812,
+    lng: 139.7671,
+    name: 'Tokyo Station',
+  });
+  const [mapMarkers, setMapMarkers] = useState<Location[]>([]);
+  const [mapRoutes, setMapRoutes] = useState<Location[][]>([]);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -179,13 +195,27 @@ export default function ChatContainer() {
         isUser: false,
       },
     ]);
+
+    // Update map with plan data
+    if (mockPlan.route) {
+      setMapRoutes([mockPlan.route]);
+    }
+    // Extract place markers from activities
+    const markers = mockPlan.activities
+      .filter((a) => a.place)
+      .map((a) => ({
+        lat: a.place!.location.lat,
+        lng: a.place!.location.lng,
+        name: a.place!.name,
+      }));
+    setMapMarkers(markers);
   };
 
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* Header */}
       <header className="border-b border-[--color-gray-200] bg-white">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
+        <div className="w-full px-6 py-4 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-[--color-primary-blue]">
               週末お出かけプランナー
@@ -204,68 +234,79 @@ export default function ChatContainer() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 py-6">
-          {/* Error Message */}
-          {error && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
-              {error}
-            </div>
-          )}
-
-          {/* Messages */}
-          {messages.map((msg, index) => (
-            <ChatMessage key={index} message={msg.text} isUser={msg.isUser} />
-          ))}
-
-          {/* Loading Indicator */}
-          {isLoading && (
-            <div className="flex justify-start mb-4">
-              <div className="bg-[--color-gray-100] px-4 py-3 rounded-[18px_18px_18px_4px]">
-                <div className="flex gap-1">
-                  <div
-                    className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
-                    style={{ animationDelay: '0ms' }}
-                  ></div>
-                  <div
-                    className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
-                    style={{ animationDelay: '150ms' }}
-                  ></div>
-                  <div
-                    className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
-                    style={{ animationDelay: '300ms' }}
-                  ></div>
+      {/* Main Content: Chat + Map */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Chat Panel */}
+        <div className="flex-1 flex flex-col border-r border-[--color-gray-200]">
+          {/* Messages Container */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-4xl mx-auto px-6 py-6">
+              {/* Error Message */}
+              {error && (
+                <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  {error}
                 </div>
-              </div>
+              )}
+
+              {/* Messages */}
+              {messages.map((msg, index) => (
+                <ChatMessage key={index} message={msg.text} isUser={msg.isUser} />
+              ))}
+
+              {/* Loading Indicator */}
+              {isLoading && (
+                <div className="flex justify-start mb-4">
+                  <div className="bg-[--color-gray-100] px-4 py-3 rounded-[18px_18px_18px_4px]">
+                    <div className="flex gap-1">
+                      <div
+                        className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
+                        style={{ animationDelay: '0ms' }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
+                        style={{ animationDelay: '150ms' }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-[--color-gray-500] rounded-full animate-bounce"
+                        style={{ animationDelay: '300ms' }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Plan Display */}
+              {currentPlan && (
+                <div className="mb-6">
+                  <PlanSummary
+                    plan={currentPlan}
+                    onConfirm={handleConfirmPlan}
+                    onModify={handleModifyPlan}
+                    onStartOver={handleStartOver}
+                    onPlaceClick={handlePlaceClick}
+                  />
+                </div>
+              )}
+
+              {/* Quick Replies */}
+              {!isLoading && !currentPlan && quickReplies.length > 0 && (
+                <QuickReplies replies={quickReplies} onReplyClick={handleQuickReply} />
+              )}
+
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
             </div>
-          )}
+          </div>
 
-          {/* Plan Display */}
-          {currentPlan && (
-            <div className="mb-6">
-              <PlanSummary
-                plan={currentPlan}
-                onConfirm={handleConfirmPlan}
-                onModify={handleModifyPlan}
-                onStartOver={handleStartOver}
-                onPlaceClick={handlePlaceClick}
-              />
-            </div>
-          )}
+          {/* Input */}
+          <ChatInput onSendMessage={sendMessage} disabled={isLoading || !sessionId} />
+        </div>
 
-          {/* Quick Replies */}
-          {!isLoading && !currentPlan && quickReplies.length > 0 && (
-            <QuickReplies replies={quickReplies} onReplyClick={handleQuickReply} />
-          )}
-
-          {/* Scroll anchor */}
-          <div ref={messagesEndRef} />
+        {/* Map Panel */}
+        <div className="w-1/2 bg-gray-50">
+          <MapDisplay center={mapCenter} markers={mapMarkers} routes={mapRoutes} />
         </div>
       </div>
-
-      {/* Input */}
-      <ChatInput onSendMessage={sendMessage} disabled={isLoading || !sessionId} />
     </div>
   );
 }

@@ -184,11 +184,24 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 return (plan_description, None)
 
             except Exception as e:
-                logger.error(f"Failed to generate plan: {e}")
-                return (
-                    "プランの作成中にエラーが発生しました。もう一度お試しください。",
-                    None
-                )
+                logger.error(f"Failed to generate plan: {e}", exc_info=True)
+
+                # Provide user-friendly error message based on error type
+                error_msg = "申し訳ございませんが、プランの作成中に問題が発生しました。"
+
+                error_str = str(e).lower()
+                if "timeout" in error_str or "timed out" in error_str:
+                    error_msg += "処理に時間がかかりすぎています。もう一度お試しください。"
+                elif "quota" in error_str or "rate limit" in error_str:
+                    error_msg += "一時的にアクセスが集中しています。しばらく待ってからお試しください。"
+                elif "network" in error_str or "connection" in error_str:
+                    error_msg += "ネットワーク接続に問題があります。インターネット接続を確認してください。"
+                elif "authentication" in error_str or "credentials" in error_str:
+                    error_msg += "サービスの設定に問題があります。管理者にお問い合わせください。"
+                else:
+                    error_msg += "もう一度お試しいただくか、条件を変更してみてください。"
+
+                return (error_msg, None)
 
         # Ask about meals if not set yet
         if not prefs.meals and prefs.activity_type:

@@ -134,28 +134,6 @@ async def health_check() -> dict[str, str]:
 
 
 @app.get("/status")
-async def status_check() -> dict[str, str | dict[str, str]]:
-    """Detailed status endpoint with configuration info."""
-    return {
-        "status": "operational",
-        "service": "Family Weekend Planner API",
-        "version": "1.0.0",
-        "environment": settings.environment,
-        "config": {
-            "gcp_project": settings.google_cloud_project_id,
-            "gcp_location": settings.google_cloud_location,
-            "vertex_ai_model": settings.vertex_ai_model,
-            "cors_enabled": True,
-        },
-        "endpoints": {
-            "docs": "/docs",
-            "health": "/health",
-            "status": "/status",
-        }
-    }
-
-
-@app.get("/status")
 async def status_check() -> dict[str, str | int]:
     """Detailed status endpoint with session info."""
     return {

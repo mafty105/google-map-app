@@ -133,20 +133,17 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 activity_type="indoor"
             )
 
-        # Ask about meals if not set
-        if not prefs.meals and prefs.activity_type:
-            return (
-                "昼食や夕食はお取りになりますか?",
-                ["とる", "とらない"]
-            )
-
-        # Store meal preference
+        # Store meal preference if user answered
         if "とる" in user_message or "yes" in user_message.lower():
             conversation_manager.update_preferences(
                 session.session_id,
                 meals=["lunch"]
             )
+            # Refresh prefs after update
+            prefs = conversation_manager.get_session(session.session_id).user_preferences
 
+        # Check if we have enough info to generate plan
+        if prefs.activity_type and prefs.meals:
             # Generate travel plan with Vertex AI + Google Maps grounding
             conversation_manager.transition_state(
                 session.session_id,
@@ -154,9 +151,6 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             )
 
             try:
-                # Build optimized prompt using preferences
-                prefs = session.user_preferences
-
                 # Convert preferences to dict for prompt template
                 prefs_dict = {
                     "location": {
@@ -195,6 +189,13 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     "プランの作成中にエラーが発生しました。もう一度お試しください。",
                     None
                 )
+
+        # Ask about meals if not set yet
+        if not prefs.meals and prefs.activity_type:
+            return (
+                "昼食や夕食はお取りになりますか?",
+                ["とる", "とらない"]
+            )
 
         return ("ご質問に答えていただきありがとうございます。", None)
 

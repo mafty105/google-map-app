@@ -95,3 +95,5 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+service_account.json

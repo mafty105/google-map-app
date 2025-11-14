@@ -6,13 +6,8 @@ import MapDisplay from './MapDisplay';
 import PlanSummary from './PlanSummary';
 import type { TravelPlan } from '../types/plan';
 import { mockPlan } from '../data/mockPlan';
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-
-interface Message {
-  text: string;
-  isUser: boolean;
-}
+import { useSession } from '../hooks/useSession';
+import { useChat } from '../hooks/useChat';
 
 interface Location {
   lat: number;
@@ -20,29 +15,21 @@ interface Location {
   name?: string;
 }
 
-interface ChatResponse {
-  session_id: string;
-  response: string;
-  state: string;
-  quick_replies?: string[];
-  plan?: TravelPlan; // Plan data from backend
-}
-
-interface SessionResponse {
-  session_id: string;
-}
-
 /**
  * ChatContainer - Main chat interface component
  * Manages conversation state and API communication
  */
 export default function ChatContainer() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [quickReplies, setQuickReplies] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<TravelPlan | null>(null);
+  const { sessionId, loading: sessionLoading, error: sessionError } = useSession();
+  const {
+    messages,
+    quickReplies,
+    isLoading,
+    error: chatError,
+    currentPlan,
+    sendMessage,
+    addGreeting,
+  } = useChat(sessionId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Map state
@@ -63,89 +50,17 @@ export default function ChatContainer() {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize session on component mount
+  // Add initial greeting when session is ready
   useEffect(() => {
-    const initSession = async () => {
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/chat/session`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to create session');
-        }
-
-        const data: SessionResponse = await response.json();
-        setSessionId(data.session_id);
-
-        // Add initial greeting message
-        setMessages([
-          {
-            text: 'こんにちは！週末のお出かけプランをお手伝いします。\nどこからお出かけされますか？',
-            isUser: false,
-          },
-        ]);
-      } catch (err) {
-        setError('セッションの開始に失敗しました。ページを再読み込みしてください。');
-        console.error('Failed to initialize session:', err);
-      }
-    };
-
-    initSession();
-  }, []);
-
-  // Send message to backend
-  const sendMessage = async (messageText: string) => {
-    if (!sessionId || !messageText.trim()) return;
-
-    // Add user message to UI immediately
-    const userMessage: Message = { text: messageText, isUser: true };
-    setMessages((prev) => [...prev, userMessage]);
-    setQuickReplies([]);
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          message: messageText,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to send message');
-      }
-
-      const data: ChatResponse = await response.json();
-
-      // Add assistant response to UI
-      const assistantMessage: Message = { text: data.response, isUser: false };
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      // Set quick replies if available
-      if (data.quick_replies && data.quick_replies.length > 0) {
-        setQuickReplies(data.quick_replies);
-      }
-
-      // Set plan if available (from backend)
-      if (data.plan) {
-        setCurrentPlan(data.plan);
-      }
-    } catch (err) {
-      setError('メッセージの送信に失敗しました。もう一度お試しください。');
-      console.error('Failed to send message:', err);
-    } finally {
-      setIsLoading(false);
+    if (sessionId && messages.length === 0) {
+      addGreeting(
+        'こんにちは！週末のお出かけプランをお手伝いします。\nどこからお出かけされますか？',
+      );
     }
-  };
+  }, [sessionId, messages.length, addGreeting]);
+
+  // Combine errors from session and chat
+  const error = sessionError || chatError;
 
   // Handle quick reply click
   const handleQuickReply = (reply: string) => {
@@ -299,7 +214,10 @@ export default function ChatContainer() {
           </div>
 
           {/* Input */}
-          <ChatInput onSendMessage={sendMessage} disabled={isLoading || !sessionId} />
+          <ChatInput
+            onSendMessage={sendMessage}
+            disabled={isLoading || sessionLoading || !sessionId}
+          />
         </div>
 
         {/* Map Panel */}

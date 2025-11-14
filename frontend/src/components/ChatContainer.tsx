@@ -54,7 +54,13 @@ export default function ChatContainer() {
   useEffect(() => {
     if (sessionId && messages.length === 0) {
       addGreeting(
-        'こんにちは！週末のお出かけプランをお手伝いします。\nどこからお出かけされますか？',
+        'こんにちは！週末のお出かけプランをお手伝いします。🗺️\n\n' +
+          '以下の情報を教えていただければ、おすすめのプランを提案します：\n' +
+          '• 出発地（駅名や住所）\n' +
+          '• 移動時間（片道何分くらい）\n' +
+          '• アクティビティの種類\n' +
+          '• お子様の年齢（もしあれば）\n\n' +
+          'まず、どこからお出かけされますか？',
       );
     }
   }, [sessionId, messages.length, addGreeting]);
@@ -165,7 +171,12 @@ export default function ChatContainer() {
 
               {/* Messages */}
               {messages.map((msg, index) => (
-                <ChatMessage key={index} message={msg.text} isUser={msg.isUser} />
+                <ChatMessage
+                  key={index}
+                  message={msg.text}
+                  isUser={msg.isUser}
+                  timestamp={msg.timestamp}
+                />
               ))}
 
               {/* Loading Indicator */}

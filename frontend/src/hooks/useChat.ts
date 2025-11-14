@@ -8,6 +8,7 @@ import { chatAPI, type ChatResponse } from '../services/api';
 export interface Message {
   text: string;
   isUser: boolean;
+  timestamp: string;
 }
 
 export function useChat(sessionId: string | null) {
@@ -27,19 +28,24 @@ export function useChat(sessionId: string | null) {
       }
 
       // Add user message immediately
-      const userMessage: Message = { text: messageText, isUser: true };
+      const userMessage: Message = {
+        text: messageText,
+        isUser: true,
+        timestamp: new Date().toISOString(),
+      };
       setMessages((prev) => [...prev, userMessage]);
       setQuickReplies([]);
       setIsLoading(true);
       setError(null);
 
-      try {
+      try:
         const response = await chatAPI.sendMessage(sessionId, messageText);
 
         // Add assistant response
         const assistantMessage: Message = {
           text: response.response,
           isUser: false,
+          timestamp: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
@@ -79,7 +85,13 @@ export function useChat(sessionId: string | null) {
    * Add initial greeting message
    */
   const addGreeting = useCallback((greeting: string) => {
-    setMessages([{ text: greeting, isUser: false }]);
+    setMessages([
+      {
+        text: greeting,
+        isUser: false,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
   }, []);
 
   return {

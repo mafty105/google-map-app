@@ -16,6 +16,7 @@ import googlemaps
 from googlemaps.exceptions import ApiError, HTTPError, Timeout, TransportError
 
 from app.config import settings
+from app.services.cache import geocoding_cache, place_details_cache
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ class GoogleMapsService:
     def geocode_address(self, address: str, language: str = "ja") -> dict[str, Any] | None:
         """Convert an address to geographic coordinates.
 
+        Uses caching to reduce API calls for repeated addresses.
+
         Args:
             address: The address to geocode (supports Japanese)
             language: Language for results (default: Japanese)
@@ -55,22 +58,35 @@ class GoogleMapsService:
         Raises:
             GoogleMapsError: If API call fails
         """
+        # Check cache first
+        cache_key = f"geocode:{address}:{language}"
+        cached_result = geocoding_cache.get(cache_key)
+        if cached_result is not None:
+            logger.debug(f"Geocoding cache hit for: {address}")
+            return cached_result
+
         try:
             results = self.client.geocode(address, language=language)
 
             if not results:
                 logger.warning(f"No geocoding results found for address: {address}")
+                # Cache null results too to avoid repeated failed lookups
+                geocoding_cache.set(cache_key, None)
                 return None
 
             # Return first (best) result
             location = results[0]["geometry"]["location"]
-            return {
+            result = {
                 "lat": location["lat"],
                 "lng": location["lng"],
                 "formatted_address": results[0]["formatted_address"],
                 "place_id": results[0].get("place_id"),
                 "address_components": results[0].get("address_components", []),
             }
+
+            # Cache the result
+            geocoding_cache.set(cache_key, result)
+            return result
 
         except (ApiError, HTTPError, Timeout, TransportError) as e:
             logger.error(f"Geocoding API error for address '{address}': {e}")
@@ -118,6 +134,8 @@ class GoogleMapsService:
     ) -> dict[str, Any] | None:
         """Get detailed information about a place.
 
+        Uses caching to reduce API calls for repeated place lookups.
+
         Args:
             place_id: The Google Place ID
             fields: List of fields to return (default: name, address, rating, photos)
@@ -143,13 +161,25 @@ class GoogleMapsService:
                 "formatted_phone_number",
             ]
 
+        # Check cache first
+        cache_key = f"place:{place_id}:{language}"
+        cached_result = place_details_cache.get(cache_key)
+        if cached_result is not None:
+            logger.debug(f"Place details cache hit for: {place_id}")
+            return cached_result
+
         try:
             result = self.client.place(place_id=place_id, fields=fields, language=language)
 
             if result.get("status") == "OK":
-                return result.get("result")
+                place_data = result.get("result")
+                # Cache the result
+                place_details_cache.set(cache_key, place_data)
+                return place_data
             else:
                 logger.warning(f"Place details not found for place_id: {place_id}")
+                # Cache null result
+                place_details_cache.set(cache_key, None)
                 return None
 
         except (ApiError, HTTPError, Timeout, TransportError) as e:

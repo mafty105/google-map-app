@@ -145,6 +145,17 @@ async def status_check() -> dict[str, str | int]:
     }
 
 
+@app.get("/cache/stats")
+async def cache_stats() -> dict[str, dict[str, int | float]]:
+    """Get cache statistics for performance monitoring."""
+    from app.services.cache import geocoding_cache, place_details_cache
+
+    return {
+        "geocoding": geocoding_cache.get_stats(),
+        "place_details": place_details_cache.get_stats(),
+    }
+
+
 @app.get("/")
 async def root() -> dict[str, str]:
     """Root endpoint with API information."""

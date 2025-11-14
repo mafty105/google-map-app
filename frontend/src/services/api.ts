@@ -12,12 +12,31 @@ export interface SessionResponse {
   message: string;
 }
 
+export interface EnrichedPlace {
+  id: string;
+  place_id: string;
+  name: string;
+  formatted_address?: string;
+  location?: {
+    lat: number;
+    lng: number;
+  };
+  rating?: number;
+  user_ratings_total?: number;
+  photo_url?: string;
+  opening_hours?: unknown;
+  website?: string;
+  phone?: string;
+  types?: string[];
+}
+
 export interface ChatResponse {
   session_id: string;
   response: string;
   state: string;
   quick_replies?: string[];
   plan?: unknown; // TravelPlan type from backend
+  enriched_places?: EnrichedPlace[];
 }
 
 export interface SessionHistoryResponse {
@@ -80,8 +99,14 @@ async function fetchAPI<T>(
     }
 
     // Network or other errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new APIError(
+        'バックエンドサーバーに接続できません。サーバーが起動しているか確認してください。',
+      );
+    }
+
     throw new APIError(
-      error instanceof Error ? error.message : 'Network error occurred',
+      error instanceof Error ? error.message : 'ネットワークエラーが発生しました',
     );
   }
 }

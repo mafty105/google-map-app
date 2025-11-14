@@ -154,9 +154,9 @@ class GoogleMapsService:
                 "geometry",
                 "rating",
                 "user_ratings_total",
-                "photos",
+                "photo",
                 "opening_hours",
-                "types",
+                "type",
                 "website",
                 "formatted_phone_number",
             ]
@@ -185,6 +185,63 @@ class GoogleMapsService:
         except (ApiError, HTTPError, Timeout, TransportError) as e:
             logger.error(f"Place details API error for place_id '{place_id}': {e}")
             raise GoogleMapsError(f"Failed to get place details: {e}") from e
+
+    def find_place_by_text(
+        self,
+        query: str,
+        location_bias: tuple[float, float] | None = None,
+        language: str = "ja",
+    ) -> dict[str, Any] | None:
+        """Find a place by text query (name or address).
+
+        Args:
+            query: Place name or address to search for
+            location_bias: Optional (lat, lng) tuple to bias results
+            language: Language for results (default: Japanese)
+
+        Returns:
+            Place dict with place_id, name, formatted_address, location, etc.
+            None if no place found.
+
+        Raises:
+            GoogleMapsError: If API call fails
+        """
+        try:
+            # Use find_place to get place_id by text query
+            result = self.client.find_place(
+                input=query,
+                input_type="textquery",
+                language=language,
+                location_bias=f"point:{location_bias[0]},{location_bias[1]}" if location_bias else None,
+                fields=[
+                    "place_id",
+                    "name",
+                    "formatted_address",
+                    "geometry",
+                    "types",
+                ],
+            )
+
+            candidates = result.get("candidates", [])
+            if not candidates:
+                logger.warning(f"No place found for query: {query}")
+                return None
+
+            # Return the first (best) candidate
+            place = candidates[0]
+            logger.info(f"Found place: {place.get('name')} (ID: {place.get('place_id')})")
+
+            return {
+                "place_id": place.get("place_id"),
+                "name": place.get("name"),
+                "formatted_address": place.get("formatted_address"),
+                "location": place.get("geometry", {}).get("location"),
+                "types": place.get("types", []),
+            }
+
+        except (ApiError, HTTPError, Timeout, TransportError) as e:
+            logger.error(f"Find place API error for query '{query}': {e}")
+            raise GoogleMapsError(f"Failed to find place: {e}") from e
 
     def search_nearby_places(
         self,

@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { chatAPI, type ChatResponse } from '../services/api';
+import { chatAPI, type ChatResponse, type EnrichedPlace } from '../services/api';
 
 export interface Message {
   text: string;
@@ -17,6 +17,7 @@ export function useChat(sessionId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<unknown | null>(null);
+  const [enrichedPlaces, setEnrichedPlaces] = useState<EnrichedPlace[]>([]);
 
   /**
    * Send a message to the backend
@@ -38,7 +39,7 @@ export function useChat(sessionId: string | null) {
       setIsLoading(true);
       setError(null);
 
-      try:
+      try {
         const response = await chatAPI.sendMessage(sessionId, messageText);
 
         // Add assistant response
@@ -57,6 +58,11 @@ export function useChat(sessionId: string | null) {
         // Update plan if provided
         if (response.plan) {
           setCurrentPlan(response.plan);
+        }
+
+        // Update enriched places if provided
+        if (response.enriched_places && response.enriched_places.length > 0) {
+          setEnrichedPlaces(response.enriched_places);
         }
 
         return response;
@@ -78,6 +84,7 @@ export function useChat(sessionId: string | null) {
     setMessages([]);
     setQuickReplies([]);
     setCurrentPlan(null);
+    setEnrichedPlaces([]);
     setError(null);
   }, []);
 
@@ -100,6 +107,7 @@ export function useChat(sessionId: string | null) {
     isLoading,
     error,
     currentPlan,
+    enrichedPlaces,
     sendMessage,
     clearMessages,
     addGreeting,

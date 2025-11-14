@@ -26,6 +26,7 @@ class ChatMessageResponse(BaseModel):
     response: str
     state: str
     quick_replies: list[str] | None = None
+    enriched_places: list[dict] | None = None
 
 
 class SessionHistoryResponse(BaseModel):

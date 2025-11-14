@@ -47,7 +47,7 @@ class VertexAIService:
         max_output_tokens: int | None = None,
         latitude: float | None = None,
         longitude: float | None = None,
-    ) -> str:
+    ) -> dict[str, Any]:
         """
         Generate content using Vertex AI with optional Google Maps grounding.
 
@@ -60,7 +60,9 @@ class VertexAIService:
             longitude: Optional longitude for location-based search
 
         Returns:
-            Generated text response
+            Dict with keys:
+                - text: Generated text response
+                - grounding_metadata: Grounding metadata dict or None
 
         Raises:
             Exception: If the API call fails
@@ -106,16 +108,50 @@ class VertexAIService:
             # Extract text from response
             if not response.text:
                 logger.warning("No text in response")
-                return ""
+                return {"text": "", "grounding_metadata": None}
 
             result_text = response.text
             logger.info(f"Generated response length: {len(result_text)}")
 
-            # Log grounding metadata if available
+            # Extract grounding metadata if available
+            grounding_metadata = None
             if hasattr(response, "grounding_metadata") and response.grounding_metadata:
-                logger.info(f"Grounding metadata: {response.grounding_metadata}")
+                # Convert to dict for easier handling
+                grounding_metadata = {
+                    "grounding_chunks": [],
+                    "grounding_supports": [],
+                }
 
-            return result_text
+                # Extract grounding chunks (search results)
+                if hasattr(response.grounding_metadata, "grounding_chunks"):
+                    for chunk in response.grounding_metadata.grounding_chunks:
+                        chunk_dict = {}
+                        if hasattr(chunk, "web") and chunk.web:
+                            chunk_dict["web"] = {
+                                "uri": chunk.web.uri if hasattr(chunk.web, "uri") else None,
+                                "title": chunk.web.title if hasattr(chunk.web, "title") else None,
+                            }
+                        grounding_metadata["grounding_chunks"].append(chunk_dict)
+
+                # Extract grounding supports (citations)
+                if hasattr(response.grounding_metadata, "grounding_supports"):
+                    for support in response.grounding_metadata.grounding_supports:
+                        support_dict = {}
+                        if hasattr(support, "segment"):
+                            support_dict["segment"] = {
+                                "start_index": support.segment.start_index if hasattr(support.segment, "start_index") else None,
+                                "end_index": support.segment.end_index if hasattr(support.segment, "end_index") else None,
+                            }
+                        if hasattr(support, "grounding_chunk_indices"):
+                            support_dict["chunk_indices"] = list(support.grounding_chunk_indices)
+                        grounding_metadata["grounding_supports"].append(support_dict)
+
+                logger.info(f"Extracted grounding metadata: {len(grounding_metadata['grounding_chunks'])} chunks, {len(grounding_metadata['grounding_supports'])} supports")
+
+            return {
+                "text": result_text,
+                "grounding_metadata": grounding_metadata,
+            }
 
         except Exception as e:
             logger.error(f"Failed to generate content: {e}")
@@ -127,7 +163,7 @@ class VertexAIService:
         user_message: str,
         conversation_history: list[dict[str, str]] | None = None,
         use_grounding: bool = True,
-    ) -> str:
+    ) -> dict[str, Any]:
         """
         Generate content with conversation context.
 
@@ -138,7 +174,9 @@ class VertexAIService:
             use_grounding: Whether to enable Google Maps grounding
 
         Returns:
-            Generated text response
+            Dict with keys:
+                - text: Generated text response
+                - grounding_metadata: Grounding metadata dict or None
         """
         # Build prompt with context
         prompt_parts = [system_prompt, ""]
@@ -189,14 +227,14 @@ JSON形式で抽出した情報を返してください。情報がない項目�
 抽出した情報をJSON形式で返してください。"""
 
         try:
-            response = self.generate_content(
+            result = self.generate_content(
                 system_prompt + "\n" + prompt,
                 use_grounding=False,  # No grounding needed for preference extraction
             )
 
             # TODO: Parse JSON response and merge with current preferences
             # For now, return current preferences
-            logger.debug(f"Preference extraction response: {response}")
+            logger.debug(f"Preference extraction response: {result['text']}")
             return current_preferences
 
         except Exception as e:
@@ -240,7 +278,7 @@ JSON形式で抽出した情報を返してください。情報がない項目�
 """
 
         try:
-            response = self.generate_content(
+            result = self.generate_content(
                 prompt,
                 use_grounding=True,  # Use Maps grounding for real places
             )
@@ -248,9 +286,10 @@ JSON形式で抽出した情報を返してください。情報がない項目�
             # TODO: Parse response and structure as travel plan
             # For now, return basic structure
             plan = {
-                "description": response,
+                "description": result["text"],
                 "activities": [],
                 "route": [],
+                "grounding_metadata": result["grounding_metadata"],
             }
 
             logger.info("Generated travel plan successfully")

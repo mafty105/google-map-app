@@ -14,6 +14,7 @@ from app.models.api import (
 from app.models.conversation import ConversationState
 from app.services.conversation_manager import conversation_manager
 from app.services.vertex_ai import vertex_ai_service
+from app.services.prompts import build_plan_generation_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -153,26 +154,32 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             )
 
             try:
-                # Build prompt from user preferences
+                # Build optimized prompt using preferences
                 prefs = session.user_preferences
-                location = prefs.location.address if prefs.location.address else "東京駅"
-                activity = prefs.activity_type or "アクティブ"
 
-                prompt = f"""週末のお出かけプランを作成してください。
+                # Convert preferences to dict for prompt template
+                prefs_dict = {
+                    "location": {
+                        "address": prefs.location.address or "東京駅",
+                        "lat": prefs.location.lat or 35.6812,
+                        "lng": prefs.location.lng or 139.7671,
+                    },
+                    "travel_time": prefs.travel_time.model_dump() if prefs.travel_time else {"value": 60},
+                    "activity_type": prefs.activity_type or "アクティブ",
+                    "meals": prefs.meals or [],
+                    "child_age": prefs.child_age,
+                    "transportation": prefs.transportation,
+                }
 
-条件：
-- 出発地: {location}
-- アクティビティタイプ: {activity}
-- 昼食: あり
-
-実際に存在する場所を3つ提案し、それぞれの名前、アクセス方法、おすすめポイントを簡潔に教えてください。"""
+                # Generate optimized prompt
+                prompt = build_plan_generation_prompt(prefs_dict)
 
                 # Generate plan with Google Maps grounding
                 plan_description = vertex_ai_service.generate_content(
                     prompt,
                     use_grounding=True,
-                    latitude=prefs.location.lat if prefs.location.lat else 35.6812,
-                    longitude=prefs.location.lng if prefs.location.lng else 139.7671,
+                    latitude=prefs_dict["location"]["lat"],
+                    longitude=prefs_dict["location"]["lng"],
                 )
 
                 conversation_manager.transition_state(

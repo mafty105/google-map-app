@@ -13,6 +13,7 @@ from app.models.api import (
 )
 from app.models.conversation import ConversationState
 from app.services.conversation_manager import conversation_manager
+from app.services.vertex_ai import vertex_ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -145,16 +146,48 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 meals=["lunch"]
             )
 
-            # For now, indicate plan would be generated
-            # In Issue #4, this will call Vertex AI
+            # Generate travel plan with Vertex AI + Google Maps grounding
             conversation_manager.transition_state(
                 session.session_id,
                 ConversationState.GENERATING_PLAN
             )
-            return (
-                "プランを作成中です...\n\n（現在、Vertex AI統合は未実装です。Issue #4で実装予定）",
-                None
-            )
+
+            try:
+                # Build prompt from user preferences
+                prefs = session.user_preferences
+                location = prefs.location.address if prefs.location.address else "東京駅"
+                activity = prefs.activity_type or "アクティブ"
+
+                prompt = f"""週末のお出かけプランを作成してください。
+
+条件：
+- 出発地: {location}
+- アクティビティタイプ: {activity}
+- 昼食: あり
+
+実際に存在する場所を3つ提案し、それぞれの名前、アクセス方法、おすすめポイントを簡潔に教えてください。"""
+
+                # Generate plan with Google Maps grounding
+                plan_description = vertex_ai_service.generate_content(
+                    prompt,
+                    use_grounding=True,
+                    latitude=prefs.location.lat if prefs.location.lat else 35.6812,
+                    longitude=prefs.location.lng if prefs.location.lng else 139.7671,
+                )
+
+                conversation_manager.transition_state(
+                    session.session_id,
+                    ConversationState.PRESENTING_PLAN
+                )
+
+                return (plan_description, None)
+
+            except Exception as e:
+                logger.error(f"Failed to generate plan: {e}")
+                return (
+                    "プランの作成中にエラーが発生しました。もう一度お試しください。",
+                    None
+                )
 
         return ("ご質問に答えていただきありがとうございます。", None)
 

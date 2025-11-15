@@ -427,103 +427,212 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         logger.info("State is FREE_INPUT - processing additional user input")
         import re
 
-        # Extract additional info from this message
-        try:
-            extracted = vertex_ai_service.extract_preferences_from_freeform(user_message)
-            logger.info(f"Extracted additional info: {extracted}")
+        # First, try simple keyword matching for quick replies
+        prefs = session.user_preferences
+        keyword_matched = False
 
-            # Update preferences with new data (merge with existing)
-            if extracted.get("location", {}).get("address") and extracted["location"].get("explicit"):
-                # Only override location if explicitly mentioned
+        # Handle transportation keywords
+        if "車" in user_message or "car" in user_message.lower():
+            if "ある" in user_message or "あり" in user_message or "使える" in user_message or user_message.strip() == "車":
                 conversation_manager.update_preferences(
                     session.session_id,
-                    location=Location(address=extracted["location"]["address"], lat=None, lng=None)
+                    transportation="car"
                 )
+                keyword_matched = True
+                logger.info("Matched transportation keyword: car")
+        elif "電車" in user_message or "公共交通" in user_message or "バス" in user_message or "電車・バス" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                transportation="public"
+            )
+            keyword_matched = True
+            logger.info("Matched transportation keyword: public")
 
-            if extracted.get("travel_time", {}).get("value"):
-                travel_time_data = extracted["travel_time"]
+        # Handle child age patterns
+        if "歳" in user_message or "才" in user_message:
+            age_match = re.search(r'(\d+(?:-\d+)?)[歳才]', user_message)
+            if age_match:
                 conversation_manager.update_preferences(
                     session.session_id,
-                    travel_time=TravelTime(
-                        value=travel_time_data["value"],
-                        unit=travel_time_data.get("unit", "minutes"),
-                        direction=travel_time_data.get("direction", "one-way")
-                    )
+                    child_age=age_match.group(1)
                 )
+                keyword_matched = True
+                logger.info(f"Matched child age: {age_match.group(1)}")
 
-            if extracted.get("activity_type"):
+        # Handle travel time patterns
+        if "分" in user_message and any(char.isdigit() for char in user_message):
+            time_match = re.search(r'(\d+)\s*分', user_message)
+            if time_match:
                 conversation_manager.update_preferences(
                     session.session_id,
-                    activity_type=extracted["activity_type"]
+                    travel_time=TravelTime(value=int(time_match.group(1)), unit="minutes", direction="one-way")
                 )
-
-            if extracted.get("child_age"):
+                keyword_matched = True
+                logger.info(f"Matched travel time: {time_match.group(1)} minutes")
+        elif "時間" in user_message and any(char.isdigit() for char in user_message):
+            time_match = re.search(r'(\d+)\s*時間', user_message)
+            if time_match:
                 conversation_manager.update_preferences(
                     session.session_id,
-                    child_age=extracted["child_age"]
+                    travel_time=TravelTime(value=int(time_match.group(1)) * 60, unit="minutes", direction="one-way")
                 )
+                keyword_matched = True
+                logger.info(f"Matched travel time: {time_match.group(1)} hours")
 
-            if extracted.get("transportation"):
-                conversation_manager.update_preferences(
+        # Refresh session after keyword matching
+        session = conversation_manager.get_session(session.session_id)
+        if not session:
+            logger.error("Session not found after keyword matching")
+            return ("セッションが見つかりません。もう一度お試しください。", [], None)
+
+        # Check if we have enough to generate after keyword matching
+        if conversation_manager.has_sufficient_preferences(session):
+            missing_info = conversation_manager.get_critical_missing_info(session)
+
+            if not missing_info or len(missing_info) == 0:
+                # Ready to generate!
+                logger.info("Sufficient preferences collected, transitioning to GENERATING_PLAN")
+                conversation_manager.transition_state(
                     session.session_id,
-                    transportation=extracted["transportation"]
+                    ConversationState.GENERATING_PLAN
                 )
+                return _generate_response(session, user_message)
+            else:
+                # Ask for one more critical piece
+                priority_item = missing_info[0]
+                quick_replies = []
 
-            if extracted.get("meals") and len(extracted["meals"]) > 0:
-                conversation_manager.update_preferences(
-                    session.session_id,
-                    meals=extracted["meals"]
-                )
-
-            # Refresh session
-            session = conversation_manager.get_session(session.session_id)
-
-            # Check if we have enough to generate
-            if conversation_manager.has_sufficient_preferences(session):
-                # Check for critical missing info
-                missing_info = conversation_manager.get_critical_missing_info(session)
-
-                if not missing_info or len(missing_info) == 0:
-                    # Ready to generate!
-                    conversation_manager.transition_state(
-                        session.session_id,
-                        ConversationState.GENERATING_PLAN
-                    )
-                    return _generate_response(session, user_message)
+                if priority_item == "child_age":
+                    question = "お子様は何歳ですか？"
+                    quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
+                elif priority_item == "transportation":
+                    question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
+                    quick_replies = ["車", "電車・バス"]
+                elif priority_item == "travel_time":
+                    question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
+                    quick_replies = ["30分以内", "1時間以内", "2時間以内"]
                 else:
-                    # Ask for one more critical piece
-                    priority_item = missing_info[0]
+                    question = "他に希望はありますか？"
                     quick_replies = []
 
-                    if priority_item == "child_age":
-                        question = "お子様は何歳ですか？"
-                        quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                    elif priority_item == "transportation":
-                        question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
-                        quick_replies = ["車", "電車・バス"]
-                    elif priority_item == "travel_time":
-                        question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
-                        quick_replies = ["30分以内", "1時間以内", "2時間以内"]
+                logger.info(f"Still need: {priority_item}")
+                return (question, quick_replies, None)
+
+        # If keyword matching didn't provide enough info, try AI extraction
+        if not keyword_matched or not conversation_manager.has_sufficient_preferences(session):
+            try:
+                logger.info("Using AI extraction for complex input")
+                extracted = vertex_ai_service.extract_preferences_from_freeform(user_message)
+                logger.info(f"Extracted additional info: {extracted}")
+
+                # Update preferences with new data (merge with existing)
+                prefs = session.user_preferences  # Refresh prefs
+
+                if extracted.get("location", {}).get("address") and extracted["location"].get("explicit"):
+                    # Only override location if explicitly mentioned
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        location=Location(address=extracted["location"]["address"], lat=None, lng=None)
+                    )
+
+                if extracted.get("travel_time", {}).get("value") and not prefs.travel_time:
+                    # Only use AI extraction if we don't already have travel_time from keyword matching
+                    travel_time_data = extracted["travel_time"]
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        travel_time=TravelTime(
+                            value=travel_time_data["value"],
+                            unit=travel_time_data.get("unit", "minutes"),
+                            direction=travel_time_data.get("direction", "one-way")
+                        )
+                    )
+
+                if extracted.get("activity_type"):
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        activity_type=extracted["activity_type"]
+                    )
+
+                if extracted.get("child_age") and not prefs.child_age:
+                    # Only use AI extraction if we don't already have child_age from keyword matching
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        child_age=extracted["child_age"]
+                    )
+
+                if extracted.get("transportation") and not prefs.transportation:
+                    # Only use AI extraction if we don't already have transportation from keyword matching
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        transportation=extracted["transportation"]
+                    )
+
+                if extracted.get("meals") and len(extracted["meals"]) > 0:
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        meals=extracted["meals"]
+                    )
+
+                # Refresh session after AI extraction
+                session = conversation_manager.get_session(session.session_id)
+                if not session:
+                    logger.error("Session not found after AI extraction")
+                    return ("セッションが見つかりません。もう一度お試しください。", [], None)
+
+                # Check if we have enough to generate
+                if conversation_manager.has_sufficient_preferences(session):
+                    # Check for critical missing info
+                    missing_info = conversation_manager.get_critical_missing_info(session)
+
+                    if not missing_info or len(missing_info) == 0:
+                        # Ready to generate!
+                        logger.info("Sufficient preferences collected after AI extraction, transitioning to GENERATING_PLAN")
+                        conversation_manager.transition_state(
+                            session.session_id,
+                            ConversationState.GENERATING_PLAN
+                        )
+                        return _generate_response(session, user_message)
                     else:
-                        question = "他に希望はありますか？"
+                        # Ask for one more critical piece
+                        priority_item = missing_info[0]
                         quick_replies = []
 
-                    return (question, quick_replies, None)
-            else:
-                # Still missing basic info
+                        if priority_item == "child_age":
+                            question = "お子様は何歳ですか？"
+                            quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
+                        elif priority_item == "transportation":
+                            question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
+                            quick_replies = ["車", "電車・バス"]
+                        elif priority_item == "travel_time":
+                            question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
+                            quick_replies = ["30分以内", "1時間以内", "2時間以内"]
+                        else:
+                            question = "他に希望はありますか？"
+                            quick_replies = []
+
+                        logger.info(f"Still need after AI extraction: {priority_item}")
+                        return (question, quick_replies, None)
+                else:
+                    # Still missing basic info
+                    logger.warning("Still missing basic info after AI extraction")
+                    return (
+                        "もう少し詳しく教えていただけますか？\n例：「新宿から1時間くらいで行ける子供向けの場所」",
+                        [],
+                        None
+                    )
+
+            except Exception as e:
+                logger.error(f"Failed to process FREE_INPUT with AI extraction: {e}", exc_info=True)
                 return (
-                    "もう少し詳しく教えていただけますか？\n例：「新宿から1時間くらいで行ける子供向けの場所」",
+                    "すみません、もう一度教えていただけますか？",
                     [],
                     None
                 )
-
-        except Exception as e:
-            logger.error(f"Failed to process FREE_INPUT: {e}")
-            return (
-                "すみません、もう一度教えていただけますか？",
-                [],
-                None
-            )
+        else:
+            # Keyword matching provided enough info and we already returned above
+            # This should not be reached
+            logger.warning("Unexpected code path in FREE_INPUT handler")
+            return ("もう少し詳しく教えていただけますか？", [], None)
 
     elif session.state == ConversationState.GATHERING_PREFERENCES:
         # Check what preference to ask for next

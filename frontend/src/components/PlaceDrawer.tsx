@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { EnrichedPlace } from '../services/api';
 
 interface PlaceDrawerProps {
@@ -30,6 +30,20 @@ export default function PlaceDrawer({
   hasPrevious = false,
   hasNext = false,
 }: PlaceDrawerProps) {
+  // Mounting state for animation
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Handle mounting/unmounting for animation
+  useEffect(() => {
+    if (isOpen) {
+      // Small delay to trigger CSS transition
+      const timer = setTimeout(() => setIsMounted(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsMounted(false);
+    }
+  }, [isOpen]);
+
   // Close on ESC key
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -60,7 +74,8 @@ export default function PlaceDrawer({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  // Don't render if not open (keep in DOM during closing animation)
+  if (!isOpen && !isMounted) return null;
 
   // Simple markdown to HTML conversion
   const renderMarkdown = (text?: string) => {
@@ -122,7 +137,9 @@ export default function PlaceDrawer({
     <>
       {/* Background Overlay */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+        className={`fixed inset-0 bg-black z-40 transition-opacity duration-300 ${
+          isMounted ? 'bg-opacity-50' : 'bg-opacity-0'
+        }`}
         onClick={onClose}
       />
 
@@ -133,7 +150,7 @@ export default function PlaceDrawer({
           md:top-0 md:right-0 md:h-full md:w-2/5
           max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:h-4/5 max-md:rounded-t-2xl
           transform transition-transform duration-300 ease-in-out
-          ${isOpen ? 'translate-x-0 translate-y-0' : 'md:translate-x-full max-md:translate-y-full'}
+          ${isMounted ? 'translate-x-0 translate-y-0' : 'md:translate-x-full max-md:translate-y-full'}
         `}
       >
         {/* Header with Close Button */}

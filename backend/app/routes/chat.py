@@ -502,10 +502,25 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         return ("ご質問に答えていただきありがとうございます。", None, None)
 
     elif session.state == ConversationState.PRESENTING_PLAN:
+        prefs = session.user_preferences
+
+        # Debug logging to diagnose state issues
+        logger.info(f"PRESENTING_PLAN state - message: '{user_message[:50]}'")
+        logger.info(f"Preferences: activity={prefs.activity_type}, meals={prefs.meals}, age={prefs.child_age}, time={prefs.travel_time}, transport={prefs.transportation}")
+
+        # Validate that we actually have all required preferences
+        # If not, we're in wrong state - transition back to GATHERING_PREFERENCES
+        if not prefs.activity_type or prefs.meals is None or not prefs.child_age or not prefs.travel_time or not prefs.transportation:
+            logger.warning(f"In PRESENTING_PLAN but missing preferences - transitioning back to GATHERING_PREFERENCES")
+            conversation_manager.transition_state(
+                session.session_id,
+                ConversationState.GATHERING_PREFERENCES
+            )
+            # Re-process the message in the correct state
+            return _generate_response(session, user_message)
+
         # Handle request for more spot options
         if "別のプラン" in user_message or "他の提案" in user_message or "他の候補" in user_message:
-            prefs = session.user_preferences
-
             # Check if we've reached the limit (2 additional requests = 9 total spots)
             if prefs.spots_request_count >= 2:
                 return ("申し訳ございませんが、これ以上の候補はご用意できません。表示されているスポットからお選びください。", None, None)

@@ -8,6 +8,7 @@ interface PlanSummaryProps {
   plan: TravelPlan;
   onConfirm?: () => void;
   onModify?: () => void;
+  onSeeMoreOptions?: () => void;
   onStartOver?: () => void;
   onPlaceClick?: (activityId: string) => void;
 }
@@ -20,6 +21,7 @@ export default function PlanSummary({
   plan,
   onConfirm,
   onModify,
+  onSeeMoreOptions,
   onStartOver,
   onPlaceClick,
 }: PlanSummaryProps) {
@@ -213,6 +215,14 @@ export default function PlanSummary({
             className="flex-1 px-6 py-3 bg-white border-2 border-[--color-primary-blue] text-[--color-primary-blue] font-medium rounded-lg hover:bg-blue-50 transition-colors"
           >
             ✎ 修正する
+          </button>
+        )}
+        {onSeeMoreOptions && (
+          <button
+            onClick={onSeeMoreOptions}
+            className="flex-1 px-6 py-3 bg-white border-2 border-orange-500 text-orange-600 font-medium rounded-lg hover:bg-orange-50 transition-colors"
+          >
+            🔄 別のプランを見る
           </button>
         )}
         {onStartOver && (

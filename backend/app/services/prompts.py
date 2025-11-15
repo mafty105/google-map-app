@@ -138,7 +138,8 @@ class PromptTemplates:
         if child_age:
             optional_info.append(f"- 子供の年齢: {child_age}")
         if transportation:
-            optional_info.append(f"- 希望の移動手段: {transportation}")
+            transport_text = "車" if transportation == "car" else "公共交通機関（電車・バス）"
+            optional_info.append(f"- 移動手段: {transport_text}")
 
         optional_section = (
             "\n" + "\n".join(optional_info) if optional_info else ""
@@ -163,16 +164,24 @@ class PromptTemplates:
 1. **実在する場所のみ提案**（Google Mapsで確認可能な施設）
 2. 家族で楽しめる安全な場所
 3. {travel_time}分以内で到達可能な場所
+{f"4. 車でアクセスしやすく、駐車場がある場所を優先" if transportation == "car" else "4. 駅から近く、公共交通機関でアクセスしやすい場所を優先"}
 
 ## プラン内容
 以下の形式で**3つの場所**を提案してください：
 
+**多様性の重視**:
+- 観光名所だけでなく、地域の博物館、科学館、公園、図書館なども積極的に提案
+- 子供が学べる施設や体験型の場所を優先
+- 有名な場所と地元の人が利用する場所をバランスよく含める
+- 市立・県立などの公共施設も検討対象に含める
+
 ### 1. [施設名]
 - **場所**: [住所または最寄り駅]
-- **アクセス**: {location}から電車/車で約○○分
+- **アクセス**: {location}から{f"車で約○○分" if transportation == "car" else "電車・バスで約○○分"}
 - **おすすめポイント**: [具体的な魅力を2-3行]
 - **所要時間**: 約○時間
 {"- **子供向け設備**: [あれば記載]" if child_age else ""}
+{f"- **駐車場**: [駐車場の有無と料金]" if transportation == "car" else ""}
 
 ### 2. [施設名]
 （同様の形式）

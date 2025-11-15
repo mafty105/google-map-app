@@ -23,7 +23,8 @@ export default function ChatInput({ onSendMessage, disabled = false, onUseCurren
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Shift+Enterで送信、Enterのみは改行（IME変換中も含む）
+    if (e.key === 'Enter' && e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSubmit(e as unknown as FormEvent<HTMLFormElement>);
     }

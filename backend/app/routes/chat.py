@@ -626,6 +626,104 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             logger.warning("Unexpected code path in FREE_INPUT handler")
             return ("もう少し詳しく教えていただけますか？", [], None)
 
+    elif session.state == ConversationState.GENERATING_PLAN:
+        """Generate travel plan with current preferences."""
+        logger.info("State is GENERATING_PLAN - generating plan with Vertex AI")
+
+        prefs = session.user_preferences
+
+        # Validate we have minimum required preferences
+        if not prefs.location.address:
+            logger.error("GENERATING_PLAN state but no location")
+            conversation_manager.transition_state(
+                session.session_id,
+                ConversationState.FREE_INPUT
+            )
+            return ("出発地を教えてください。", [], None)
+
+        # Set default activity_type if not specified
+        if not prefs.activity_type:
+            logger.info("No activity_type specified, using default '家族向け'")
+            conversation_manager.update_preferences(
+                session.session_id,
+                activity_type="家族向け"
+            )
+            prefs = conversation_manager.get_session(session.session_id).user_preferences
+
+        try:
+            # Convert preferences to dict for prompt template
+            prefs_dict = {
+                "location": _convert_location_to_dict(prefs.location),
+                "travel_time": prefs.travel_time.model_dump() if prefs.travel_time else {"value": 60},
+                "activity_type": prefs.activity_type or "家族向け",
+                "meals": prefs.meals or [],
+                "child_age": prefs.child_age,
+                "transportation": prefs.transportation,
+            }
+
+            # Generate optimized prompt
+            prompt = build_plan_generation_prompt(prefs_dict)
+
+            # Generate plan with Google Maps grounding
+            result = vertex_ai_service.generate_content(
+                prompt,
+                use_grounding=True,
+                latitude=prefs_dict["location"]["lat"],
+                longitude=prefs_dict["location"]["lng"],
+            )
+
+            # Extract text and grounding metadata
+            plan_description = result["text"]
+            grounding_metadata = result["grounding_metadata"]
+
+            logger.info(f"Generated plan with grounding metadata: {grounding_metadata is not None}")
+
+            # Extract and enrich places with photos from plan text
+            enriched_places = _extract_and_enrich_places(
+                plan_text=plan_description,
+                location_bias=(prefs_dict["location"]["lat"], prefs_dict["location"]["lng"])
+            )
+
+            logger.info(f"Enriched {len(enriched_places)} places with photos")
+
+            # Store shown place IDs
+            place_ids = [place["place_id"] for place in enriched_places]
+            conversation_manager.update_preferences(
+                session.session_id,
+                shown_place_ids=place_ids
+            )
+
+            conversation_manager.transition_state(
+                session.session_id,
+                ConversationState.PRESENTING_PLAN
+            )
+
+            # Add Quick Reply to show more spots (max 2 additional requests)
+            prefs = conversation_manager.get_session(session.session_id).user_preferences
+            quick_replies = ["他の候補を見る"] if prefs.spots_request_count < 2 else None
+
+            return (plan_description, quick_replies, enriched_places)
+
+        except Exception as e:
+            logger.error(f"Failed to generate plan: {e}", exc_info=True)
+
+            # Provide user-friendly error message based on error type
+            error_msg = "申し訳ございませんが、プランの作成中に問題が発生しました。"
+
+            error_str = str(e).lower()
+            if "timeout" in error_str or "timed out" in error_str:
+                error_msg += "処理に時間がかかりすぎています。もう一度お試しください。"
+            elif "quota" in error_str or "rate limit" in error_str:
+                error_msg += "一時的にアクセスが集中しています。しばらく待ってからお試しください。"
+            elif "network" in error_str or "connection" in error_str:
+                error_msg += "ネットワーク接続に問題があります。インターネット接続を確認してください。"
+            elif "authentication" in error_str or "credentials" in error_str:
+                error_msg += "サービスの設定に問題があります。管理者にお問い合わせください。"
+            else:
+                error_msg += "もう一度お試しいただくか、条件を変更してみてください。"
+
+            return (error_msg, None, None)
+
     elif session.state == ConversationState.GATHERING_PREFERENCES:
         # Check what preference to ask for next
         prefs = session.user_preferences

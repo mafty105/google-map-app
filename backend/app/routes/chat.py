@@ -423,28 +423,28 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         prefs = session.user_preferences
         keyword_matched = False
 
-        # Handle activity type keywords
-        if "公園" in user_message or "屋外" in user_message or "公園・屋外施設" in user_message:
+        # Handle activity type keywords (weather-aware: indoor vs outdoor)
+        if "屋外" in user_message or "公園" in user_message or "遊び場" in user_message:
             conversation_manager.update_preferences(
                 session.session_id,
-                activity_type="公園・屋外"
+                activity_type="屋外"
             )
             keyword_matched = True
-            logger.info("Matched activity_type keyword: 公園・屋外")
-        elif "室内" in user_message or "博物館" in user_message or "科学館" in user_message or "室内施設" in user_message:
+            logger.info("Matched activity_type keyword: 屋外")
+        elif "室内" in user_message or "博物館" in user_message or "科学館" in user_message:
             conversation_manager.update_preferences(
                 session.session_id,
-                activity_type="室内施設"
+                activity_type="室内"
             )
             keyword_matched = True
-            logger.info("Matched activity_type keyword: 室内施設")
-        elif "アクティブ" in user_message or "遊べる" in user_message or "アクティブに遊べる場所" in user_message:
+            logger.info("Matched activity_type keyword: 室内")
+        elif "どちらでもよい" in user_message or "どちらでも" in user_message:
             conversation_manager.update_preferences(
                 session.session_id,
-                activity_type="アクティブ"
+                activity_type="どちらでもよい"
             )
             keyword_matched = True
-            logger.info("Matched activity_type keyword: アクティブ")
+            logger.info("Matched activity_type keyword: どちらでもよい")
 
         # Handle transportation keywords
         if "車" in user_message or "car" in user_message.lower():
@@ -548,8 +548,8 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 priority_item = missing_info[0]
 
                 if priority_item == "activity_type":
-                    question = "どのような場所をお探しですか？"
-                    quick_replies = ["公園・屋外施設", "室内施設（博物館・科学館など）", "アクティブに遊べる場所", "その他"]
+                    question = "天候も考慮して、室内と屋外どちらがよいですか？"
+                    quick_replies = ["屋外（公園・遊び場など）", "室内（博物館・科学館など）", "どちらでもよい"]
                     logger.info(f"Asking for: {priority_item}")
                     return (question, quick_replies, None)
                 elif priority_item == "transportation":
@@ -656,8 +656,8 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                         priority_item = missing_info[0]
 
                         if priority_item == "activity_type":
-                            question = "どのような場所をお探しですか？"
-                            quick_replies = ["公園・屋外施設", "室内施設（博物館・科学館など）", "アクティブに遊べる場所", "その他"]
+                            question = "天候も考慮して、室内と屋外どちらがよいですか？"
+                            quick_replies = ["屋外（公園・遊び場など）", "室内（博物館・科学館など）", "どちらでもよい"]
                             logger.info(f"Asking after AI extraction: {priority_item}")
                             return (question, quick_replies, None)
                         elif priority_item == "transportation":

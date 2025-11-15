@@ -1,6 +1,7 @@
 """Chat API endpoints."""
 
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -11,14 +12,127 @@ from app.models.api import (
     ErrorResponse,
     SessionHistoryResponse,
 )
-from app.models.conversation import ConversationState
+from app.models.conversation import ConversationState, Location, TravelTime
 from app.services.conversation_manager import conversation_manager
 from app.services.vertex_ai import vertex_ai_service
 from app.services.prompts import build_plan_generation_prompt
+from app.services.google_maps import google_maps_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+def _convert_location_to_dict(location) -> dict:
+    """Convert Location object or dict to dict format."""
+    if not location:
+        return {
+            "address": "東京駅",
+            "lat": 35.6812,
+            "lng": 139.7671,
+        }
+
+    if isinstance(location, dict):
+        return {
+            "address": location.get("address", "東京駅"),
+            "lat": location.get("lat", 35.6812),
+            "lng": location.get("lng", 139.7671),
+        }
+    else:
+        return {
+            "address": location.address or "東京駅",
+            "lat": location.lat or 35.6812,
+            "lng": location.lng or 139.7671,
+        }
+
+
+def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float] | None = None) -> list[dict]:
+    """
+    Extract facility names from plan text and enrich with Google Places data.
+
+    Args:
+        plan_text: Generated plan text from Vertex AI
+        location_bias: Optional (lat, lng) to bias search results
+
+    Returns:
+        List of enriched place dicts with photos, ratings, etc.
+    """
+    # Extract facility names using regex pattern: ### 1. [施設名]
+    pattern = r'###\s*\d+\.\s*\*?\*?([^\n*]+)\*?\*?'
+    matches = re.findall(pattern, plan_text)
+
+    enriched_places = []
+
+    for facility_name in matches:
+        facility_name = facility_name.strip()
+        if not facility_name:
+            continue
+
+        try:
+            logger.info(f"Looking up place: {facility_name}")
+
+            # Find place by name
+            place = google_maps_service.find_place_by_text(
+                query=facility_name,
+                location_bias=location_bias,
+            )
+
+            if not place:
+                logger.warning(f"Place not found: {facility_name}")
+                continue
+
+            place_id = place["place_id"]
+
+            # Get detailed information including photos
+            details = google_maps_service.get_place_details(
+                place_id=place_id,
+                fields=[
+                    "name",
+                    "formatted_address",
+                    "geometry",
+                    "rating",
+                    "user_ratings_total",
+                    "photo",
+                    "opening_hours",
+                    "website",
+                    "formatted_phone_number",
+                    "type",
+                ],
+            )
+
+            # Extract photo URL if available
+            photo_url = None
+            if details.get("photos"):
+                # Use the first photo
+                photo_reference = details["photos"][0].get("photo_reference")
+                if photo_reference:
+                    # Build photo URL (400px width)
+                    photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference={photo_reference}&key={google_maps_service.client.key}"
+
+            enriched_place = {
+                "id": place_id,
+                "place_id": place_id,
+                "name": details.get("name", facility_name),
+                "formatted_address": details.get("formatted_address"),
+                "location": details.get("geometry", {}).get("location"),
+                "rating": details.get("rating"),
+                "user_ratings_total": details.get("user_ratings_total"),
+                "photo_url": photo_url,
+                "opening_hours": details.get("opening_hours"),
+                "website": details.get("website"),
+                "phone": details.get("formatted_phone_number"),
+                "types": details.get("types", []),
+            }
+
+            enriched_places.append(enriched_place)
+            logger.info(f"Enriched place: {enriched_place['name']} with photo: {photo_url is not None}")
+
+        except Exception as e:
+            logger.error(f"Failed to enrich place '{facility_name}': {e}", exc_info=True)
+            # Continue with next place instead of failing entirely
+            continue
+
+    return enriched_places
 
 
 @router.post("/session", response_model=CreateSessionResponse)
@@ -26,9 +140,8 @@ async def create_session() -> CreateSessionResponse:
     """Create a new conversation session."""
     session = conversation_manager.create_session()
 
-    # Add initial greeting
-    greeting = "こんにちは！週末のお出かけプランをお手伝いします。どのようなプランをお探しですか？"
-    conversation_manager.add_assistant_message(session.session_id, greeting)
+    # Don't add greeting here - let frontend handle it
+    # This avoids duplicate messages
 
     logger.info(f"Created new session: {session.session_id}")
 
@@ -54,7 +167,7 @@ async def send_message(request: ChatMessageRequest) -> ChatMessageResponse:
     conversation_manager.add_user_message(request.session_id, request.message)
 
     # Determine response based on current state
-    response_message, quick_replies = _generate_response(session, request.message)
+    response_message, quick_replies, enriched_places = _generate_response(session, request.message)
 
     # Add assistant response
     conversation_manager.add_assistant_message(request.session_id, response_message)
@@ -64,6 +177,7 @@ async def send_message(request: ChatMessageRequest) -> ChatMessageResponse:
     return ChatMessageResponse(
         session_id=request.session_id,
         response=response_message,
+        enriched_places=enriched_places,
         state=session.state.value,
         quick_replies=quick_replies
     )
@@ -100,21 +214,51 @@ async def get_session_history(session_id: str) -> SessionHistoryResponse:
     )
 
 
-def _generate_response(session, user_message: str) -> tuple[str, list[str] | None]:
-    """Generate response based on conversation state and user input."""
+def _generate_response(session, user_message: str) -> tuple[str, list[str] | None, list[dict] | None]:
+    """Generate response based on conversation state and user input.
+
+    Returns:
+        Tuple of (response_message, quick_replies, enriched_places)
+    """
+
+    logger.info(f"_generate_response called: state={session.state}, message='{user_message[:50]}'")
 
     # For now, just handle the gathering preferences state
     # This will be enhanced with Vertex AI in Issue #4
 
     if session.state == ConversationState.INITIAL:
+        logger.info("State is INITIAL - processing location")
+        # Parse location from user message
+        import re
+
+        # Check if message contains coordinates
+        coord_match = re.search(r'緯度:\s*(-?\d+\.\d+).*経度:\s*(-?\d+\.\d+)', user_message)
+
+        if coord_match:
+            lat = float(coord_match.group(1))
+            lng = float(coord_match.group(2))
+
+            # Update location
+            conversation_manager.update_preferences(
+                session.session_id,
+                location=Location(address="現在地", lat=lat, lng=lng)
+            )
+        else:
+            # Assume it's an address
+            conversation_manager.update_preferences(
+                session.session_id,
+                location=Location(address=user_message, lat=None, lng=None)
+            )
+
         # Move to gathering preferences
         conversation_manager.transition_state(
             session.session_id,
             ConversationState.GATHERING_PREFERENCES
         )
         return (
-            "アクティブな場所をお探しですか、それともインドアの施設がよいですか?",
-            ["アクティブ", "インドア"]
+            "出発地を設定しました。\n\nアクティブな場所をお探しですか、それともインドアの施設がよいですか?",
+            ["アクティブ", "インドア"],
+            None
         )
 
     elif session.state == ConversationState.GATHERING_PREFERENCES:
@@ -139,11 +283,60 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 session.session_id,
                 meals=["lunch"]
             )
-            # Refresh prefs after update
+        elif "とらない" in user_message or "no" in user_message.lower():
+            conversation_manager.update_preferences(
+                session.session_id,
+                meals=[]
+            )
+
+        # Refresh prefs after any update
+        prefs = conversation_manager.get_session(session.session_id).user_preferences
+
+        # Store child age if provided
+        if "歳" in user_message or "才" in user_message:
+            # Extract age from message
+            import re
+            age_match = re.search(r'(\d+)[歳才]', user_message)
+            if age_match:
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    child_age=age_match.group(1)
+                )
+                prefs = conversation_manager.get_session(session.session_id).user_preferences
+
+        # Store travel time if provided
+        if "分" in user_message and any(char.isdigit() for char in user_message):
+            import re
+            time_match = re.search(r'(\d+)\s*分', user_message)
+            if time_match:
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    travel_time=TravelTime(value=int(time_match.group(1)), unit="minutes", direction="one-way")
+                )
+                prefs = conversation_manager.get_session(session.session_id).user_preferences
+
+        # Store transportation if provided
+        if "車" in user_message or "car" in user_message.lower():
+            if "ある" in user_message or "あり" in user_message or "使える" in user_message:
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    transportation="car"
+                )
+            elif "ない" in user_message or "なし" in user_message:
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    transportation="public"
+                )
+            prefs = conversation_manager.get_session(session.session_id).user_preferences
+        elif "電車" in user_message or "公共交通" in user_message or "バス" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                transportation="public"
+            )
             prefs = conversation_manager.get_session(session.session_id).user_preferences
 
         # Check if we have enough info to generate plan
-        if prefs.activity_type and prefs.meals:
+        if prefs.activity_type and prefs.meals is not None and prefs.child_age and prefs.travel_time and prefs.transportation:
             # Generate travel plan with Vertex AI + Google Maps grounding
             conversation_manager.transition_state(
                 session.session_id,
@@ -153,11 +346,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             try:
                 # Convert preferences to dict for prompt template
                 prefs_dict = {
-                    "location": {
-                        "address": prefs.location.address or "東京駅",
-                        "lat": prefs.location.lat or 35.6812,
-                        "lng": prefs.location.lng or 139.7671,
-                    },
+                    "location": _convert_location_to_dict(prefs.location),
                     "travel_time": prefs.travel_time.model_dump() if prefs.travel_time else {"value": 60},
                     "activity_type": prefs.activity_type or "アクティブ",
                     "meals": prefs.meals or [],
@@ -169,19 +358,33 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 prompt = build_plan_generation_prompt(prefs_dict)
 
                 # Generate plan with Google Maps grounding
-                plan_description = vertex_ai_service.generate_content(
+                result = vertex_ai_service.generate_content(
                     prompt,
                     use_grounding=True,
                     latitude=prefs_dict["location"]["lat"],
                     longitude=prefs_dict["location"]["lng"],
                 )
 
+                # Extract text and grounding metadata
+                plan_description = result["text"]
+                grounding_metadata = result["grounding_metadata"]
+
+                logger.info(f"Generated plan with grounding metadata: {grounding_metadata is not None}")
+
+                # Extract and enrich places with photos from plan text
+                enriched_places = _extract_and_enrich_places(
+                    plan_text=plan_description,
+                    location_bias=(prefs_dict["location"]["lat"], prefs_dict["location"]["lng"])
+                )
+
+                logger.info(f"Enriched {len(enriched_places)} places with photos")
+
                 conversation_manager.transition_state(
                     session.session_id,
                     ConversationState.PRESENTING_PLAN
                 )
 
-                return (plan_description, None)
+                return (plan_description, None, enriched_places)
 
             except Exception as e:
                 logger.error(f"Failed to generate plan: {e}", exc_info=True)
@@ -201,17 +404,92 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 else:
                     error_msg += "もう一度お試しいただくか、条件を変更してみてください。"
 
-                return (error_msg, None)
+                return (error_msg, None, None)
 
-        # Ask about meals if not set yet
-        if not prefs.meals and prefs.activity_type:
+        # Ask questions in order based on what's missing
+        if prefs.activity_type and prefs.meals is None:
             return (
                 "昼食や夕食はお取りになりますか?",
-                ["とる", "とらない"]
+                ["とる", "とらない"],
+                None
             )
 
-        return ("ご質問に答えていただきありがとうございます。", None)
+        if prefs.activity_type and prefs.meals is not None and not prefs.child_age:
+            return (
+                "お子様の年齢を教えてください。（例: 3歳、5歳）",
+                None,
+                None
+            )
+
+        if prefs.activity_type and prefs.meals is not None and prefs.child_age and not prefs.travel_time:
+            return (
+                "移動時間はどのくらいを想定していますか？（例: 30分、60分）",
+                ["30分", "60分", "90分"],
+                None
+            )
+
+        if prefs.activity_type and prefs.meals is not None and prefs.child_age and prefs.travel_time and not prefs.transportation:
+            return (
+                "車はお持ちですか？",
+                ["車あり", "車なし（公共交通機関）"],
+                None
+            )
+
+        return ("ご質問に答えていただきありがとうございます。", None, None)
+
+    elif session.state == ConversationState.PRESENTING_PLAN:
+        # Handle request for alternative plans
+        if "別のプラン" in user_message or "他の提案" in user_message or "他の候補" in user_message:
+            # Regenerate plan with higher temperature for more diversity
+            prefs = session.user_preferences
+
+            try:
+                # Convert preferences to dict for prompt template
+                prefs_dict = {
+                    "location": _convert_location_to_dict(prefs.location),
+                    "travel_time": prefs.travel_time.model_dump() if prefs.travel_time else {"value": 60},
+                    "activity_type": prefs.activity_type or "アクティブ",
+                    "meals": prefs.meals or [],
+                    "child_age": prefs.child_age,
+                    "transportation": prefs.transportation,
+                }
+
+                # Generate optimized prompt with emphasis on different places
+                prompt = build_plan_generation_prompt(prefs_dict)
+                prompt += "\n\n**重要**: 前回提案した場所とは異なる施設を提案してください。特に地域の博物館や科学館など、教育的な施設も含めてください。"
+
+                # Generate plan with higher temperature (0.85) for more diversity
+                result = vertex_ai_service.generate_content(
+                    prompt,
+                    use_grounding=True,
+                    latitude=prefs_dict["location"]["lat"],
+                    longitude=prefs_dict["location"]["lng"],
+                    temperature=0.85,  # Higher temperature for more diverse results
+                )
+
+                # Extract text and grounding metadata
+                plan_description = result["text"]
+                grounding_metadata = result["grounding_metadata"]
+
+                logger.info(f"Generated alternative plan with grounding metadata: {grounding_metadata is not None}")
+
+                # Extract and enrich places with photos from plan text
+                enriched_places = _extract_and_enrich_places(
+                    plan_text=plan_description,
+                    location_bias=(prefs_dict["location"]["lat"], prefs_dict["location"]["lng"])
+                )
+
+                logger.info(f"Enriched {len(enriched_places)} places with photos for alternative plan")
+
+                return (plan_description, None, enriched_places)
+
+            except Exception as e:
+                logger.error(f"Failed to generate alternative plan: {e}", exc_info=True)
+                return ("申し訳ございません。別のプランの生成中に問題が発生しました。もう一度お試しください。", None, None)
+
+        # Default response for other messages in PRESENTING_PLAN state
+        return ("プランについてのご質問やご要望があればお聞かせください。", None, None)
 
     else:
         # Default response for other states
-        return ("ご質問ありがとうございます。", None)
+        return ("ご質問ありがとうございます。", None, None)

@@ -5,6 +5,9 @@ interface PlaceDrawerProps {
   place: EnrichedPlace;
   isOpen: boolean;
   onClose: () => void;
+  onNavigate?: (placeId: string, placeName: string, lat: number, lng: number) => void;
+  navigating?: boolean;
+  navigationError?: string | null;
   onPrevious?: () => void;
   onNext?: () => void;
   hasPrevious?: boolean;
@@ -19,6 +22,9 @@ export default function PlaceDrawer({
   place,
   isOpen,
   onClose,
+  onNavigate,
+  navigating = false,
+  navigationError = null,
   onPrevious,
   onNext,
   hasPrevious = false,
@@ -251,26 +257,70 @@ export default function PlaceDrawer({
               </div>
             )}
 
-            {/* Website & Google Maps Buttons */}
-            <div className="flex gap-3">
-              {place.website && (
+            {/* Action Buttons - Two Row Layout */}
+            <div className="space-y-3">
+              {/* Row 1: Primary Navigate Button */}
+              {onNavigate && (
+                <button
+                  onClick={() => onNavigate(place.place_id, place.name, place.location.lat, place.location.lng)}
+                  disabled={navigating}
+                  className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  aria-label="ここへ行く"
+                >
+                  {navigating ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>ルートを検索中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      <span>ここへ行く</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Navigation Error Message */}
+              {navigationError && (
+                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">{navigationError}</p>
+                </div>
+              )}
+
+              {/* Row 2: Secondary Buttons */}
+              <div className="flex gap-3">
+                {place.website && (
+                  <a
+                    href={place.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 px-4 py-3 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors text-center flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                    </svg>
+                    <span>ウェブサイト</span>
+                  </a>
+                )}
                 <a
-                  href={place.website}
+                  href={`https://www.google.com/maps/place/?q=place_id:${place.place_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors text-center"
+                  className="flex-1 px-4 py-3 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors text-center flex items-center justify-center gap-2"
                 >
-                  ウェブサイト
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Google Maps</span>
                 </a>
-              )}
-              <a
-                href={`https://www.google.com/maps/place/?q=place_id:${place.place_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 px-4 py-3 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors text-center"
-              >
-                Google Maps
-              </a>
+              </div>
             </div>
 
             {/* LLM Description */}

@@ -11,6 +11,8 @@ import type { TravelPlan } from '../types/plan';
 import { mockPlan } from '../data/mockPlan';
 import { useSession } from '../hooks/useSession';
 import { useChat } from '../hooks/useChat';
+import { useGeolocation } from '../hooks/useGeolocation';
+import { useMobileDetection } from '../hooks/useMobileDetection';
 
 interface Location {
   lat: number;
@@ -44,12 +46,19 @@ export default function ChatContainer() {
   });
   const [mapMarkers, setMapMarkers] = useState<Location[]>([]);
   const [mapRoutes, setMapRoutes] = useState<Location[][]>([]);
+  const [directionsResult, setDirectionsResult] = useState<google.maps.DirectionsResult | null>(null);
 
   // Drawer state
   const [selectedPlaceIndex, setSelectedPlaceIndex] = useState<number | null>(null);
 
   // Age selector state
   const [showAgeSelector, setShowAgeSelector] = useState(false);
+
+  // Navigation state
+  const { location: userLocation, loading: geoLoading, error: geoError, requestLocation, clearError: clearGeoError } = useGeolocation();
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const isMobile = useMobileDetection();
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -148,7 +157,72 @@ export default function ChatContainer() {
 
   const handleCloseDrawer = () => {
     setSelectedPlaceIndex(null);
+    setDirectionsResult(null); // Clear route when drawer closes
+    setNavigationError(null);
   };
+
+  const handleNavigate = async (placeId: string, placeName: string, lat: number, lng: number) => {
+    setNavigationError(null);
+
+    // Mobile: Open Google Maps app with deep link
+    if (isMobile) {
+      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${placeId}`;
+      window.open(mapsUrl, '_blank');
+      return;
+    }
+
+    // Desktop: Show route on current map
+    setIsNavigating(true);
+
+    // Request user location if not already available
+    if (!userLocation) {
+      requestLocation();
+    }
+
+    // Wait for geolocation to complete
+    if (geoLoading) {
+      return; // Geolocation is already in progress
+    }
+
+    if (geoError) {
+      setNavigationError(geoError);
+      setIsNavigating(false);
+      return;
+    }
+
+    // Use geolocation result or wait for it
+    if (!userLocation) {
+      // Location request is pending, the effect below will handle it
+      return;
+    }
+
+    // Calculate directions using Google Maps DirectionsService
+    try {
+      const directionsService = new google.maps.DirectionsService();
+
+      const result = await directionsService.route({
+        origin: { lat: userLocation.lat, lng: userLocation.lng },
+        destination: { lat, lng },
+        travelMode: google.maps.TravelMode.TRANSIT,
+        provideRouteAlternatives: false,
+      });
+
+      setDirectionsResult(result);
+      setIsNavigating(false);
+    } catch (error) {
+      console.error('Directions error:', error);
+      setNavigationError('ルートの検索に失敗しました。もう一度お試しください。');
+      setIsNavigating(false);
+    }
+  };
+
+  // Effect to handle geolocation completion for desktop navigation
+  useEffect(() => {
+    if (!isMobile && isNavigating && userLocation && !directionsResult && !navigationError) {
+      // Retry navigation now that we have user location
+      // This will happen automatically when userLocation updates
+    }
+  }, [userLocation, isMobile, isNavigating, directionsResult, navigationError]);
 
   const handlePreviousPlace = () => {
     if (selectedPlaceIndex !== null && selectedPlaceIndex > 0) {
@@ -335,7 +409,11 @@ export default function ChatContainer() {
 
         {/* Map Panel */}
         <div className="w-1/2 bg-gray-50">
-          <MapDisplay markers={mapMarkers} routes={mapRoutes} />
+          <MapDisplay
+            markers={mapMarkers}
+            routes={mapRoutes}
+            directionsResult={directionsResult}
+          />
         </div>
       </div>
 
@@ -345,6 +423,9 @@ export default function ChatContainer() {
           place={enrichedPlaces[selectedPlaceIndex]}
           isOpen={selectedPlaceIndex !== null}
           onClose={handleCloseDrawer}
+          onNavigate={handleNavigate}
+          navigating={isNavigating}
+          navigationError={navigationError}
           onPrevious={handlePreviousPlace}
           onNext={handleNextPlace}
           hasPrevious={selectedPlaceIndex > 0}

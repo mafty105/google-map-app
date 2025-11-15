@@ -13,6 +13,7 @@ interface MapDisplayProps {
   center?: Location;
   markers?: Location[];
   routes?: Location[][];
+  directionsResult?: google.maps.DirectionsResult | null;
   zoom?: number;
 }
 
@@ -27,6 +28,7 @@ export default function MapDisplay({
   center,
   markers = [],
   routes = [],
+  directionsResult = null,
   zoom = 15,
 }: MapDisplayProps) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -216,6 +218,19 @@ export default function MapDisplay({
       }
     );
   }, [map, directionsRenderer, routes]);
+
+  // Update directions when directionsResult prop changes (for navigation feature)
+  useEffect(() => {
+    if (!directionsRenderer) return;
+
+    if (directionsResult) {
+      // Show the directions result from navigation
+      directionsRenderer.setDirections(directionsResult);
+    } else {
+      // Clear directions when null (drawer closed or no navigation active)
+      directionsRenderer.setDirections({ routes: [] } as google.maps.DirectionsResult);
+    }
+  }, [directionsRenderer, directionsResult]);
 
   if (error) {
     return (

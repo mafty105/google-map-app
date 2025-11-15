@@ -1,6 +1,6 @@
 /**
  * QuickReplies - Quick reply button component
- * Based on IKYU Design Guideline
+ * Atlassian-inspired design with usability focus
  */
 
 interface QuickRepliesProps {
@@ -19,16 +19,7 @@ export default function QuickReplies({ replies, onReplyClick }: QuickRepliesProp
         <button
           key={index}
           onClick={() => onReplyClick(reply)}
-          className="
-            px-4 py-2
-            bg-white
-            border border-[--color-gray-200]
-            rounded-[20px]
-            text-sm text-[--color-gray-800]
-            transition-all duration-200
-            hover:bg-[--color-light-blue] hover:border-[--color-light-blue] hover:text-white
-            active:scale-95
-          "
+          className="px-4 py-2 bg-white border-2 border-blue-500 text-blue-700 rounded-full hover:bg-blue-50 transition-colors font-medium text-sm"
         >
           {reply}
         </button>

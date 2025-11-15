@@ -16,15 +16,18 @@ interface MapDisplayProps {
   zoom?: number;
 }
 
+// Default location (Tokyo Station)
+const DEFAULT_CENTER: Location = { lat: 35.6812, lng: 139.7671, name: 'Tokyo Station' };
+
 /**
  * MapDisplay - Google Maps integration component
  * Displays map with markers and routes for travel planning
  */
 export default function MapDisplay({
-  center = { lat: 35.6812, lng: 139.7671, name: 'Tokyo Station' }, // Default: Tokyo Station
+  center,
   markers = [],
   routes = [],
-  zoom = 12,
+  zoom = 15,
 }: MapDisplayProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -32,6 +35,38 @@ export default function MapDisplay({
   const [directionsRenderer, setDirectionsRenderer] =
     useState<google.maps.DirectionsRenderer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
+
+  // Get user's current location on mount
+  useEffect(() => {
+    // If center is provided explicitly, use it and don't get geolocation
+    if (center) {
+      setCurrentLocation(center);
+      return;
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log('Got current position:', position.coords);
+          setCurrentLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            name: 'Current Location',
+          });
+        },
+        (error) => {
+          console.warn('Geolocation error:', error);
+          // Fall back to default center
+          setCurrentLocation(DEFAULT_CENTER);
+        }
+      );
+    } else {
+      console.warn('Geolocation not supported');
+      // Fall back to default center
+      setCurrentLocation(DEFAULT_CENTER);
+    }
+  }, []);
 
   // Initialize Google Maps
   useEffect(() => {
@@ -39,6 +74,8 @@ export default function MapDisplay({
       setError('Google Maps API key is not configured');
       return;
     }
+
+    if (!currentLocation) return;
 
     const loader = new Loader({
       apiKey: GOOGLE_MAPS_API_KEY,
@@ -51,7 +88,7 @@ export default function MapDisplay({
       .then(() => {
         if (mapRef.current) {
           const newMap = new google.maps.Map(mapRef.current, {
-            center: { lat: center.lat, lng: center.lng },
+            center: { lat: currentLocation.lat, lng: currentLocation.lng },
             zoom: zoom,
             mapTypeControl: true,
             streetViewControl: false,
@@ -66,7 +103,7 @@ export default function MapDisplay({
             map: newMap,
             suppressMarkers: false,
             polylineOptions: {
-              strokeColor: '#1a4473', // IKYU primary blue
+              strokeColor: '#1d4ed8', // blue-700
               strokeWeight: 4,
               strokeOpacity: 0.8,
             },
@@ -78,7 +115,7 @@ export default function MapDisplay({
         console.error('Failed to load Google Maps:', err);
         setError('Failed to load Google Maps. Please check your API key.');
       });
-  }, []);
+  }, [currentLocation]);
 
   // Update map center when prop changes
   useEffect(() => {
@@ -109,7 +146,7 @@ export default function MapDisplay({
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 20,
-          fillColor: '#1a4473', // IKYU primary blue
+          fillColor: '#1d4ed8', // blue-700
           fillOpacity: 1,
           strokeColor: 'white',
           strokeWeight: 2,
@@ -120,7 +157,7 @@ export default function MapDisplay({
       if (location.name) {
         const infoWindow = new google.maps.InfoWindow({
           content: `<div style="padding: 8px; font-family: sans-serif;">
-            <strong style="color: #1a4473;">${location.name}</strong>
+            <strong style="color: #1d4ed8;">${location.name}</strong>
           </div>`,
         });
 
@@ -197,7 +234,7 @@ export default function MapDisplay({
       {!map && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
           <div className="text-center">
-            <div className="w-12 h-12 border-4 border-[--color-primary-blue] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-sm text-gray-600">地図を読み込み中...</p>
           </div>
         </div>

@@ -22,6 +22,25 @@ export default function ChatInput({ onSendMessage, disabled = false, onUseCurren
     }
   };
 
+  const handleUseCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const locationText = `現在地（緯度: ${lat.toFixed(6)}, 経度: ${lng.toFixed(6)}）`;
+          setMessage(locationText);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          alert('現在地の取得に失敗しました。位置情報の許可を確認してください。');
+        }
+      );
+    } else {
+      alert('このブラウザは位置情報に対応していません。');
+    }
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Shift+Enterで送信、Enterのみは改行（IME変換中も含む）
     if (e.key === 'Enter' && e.shiftKey && !e.nativeEvent.isComposing) {
@@ -36,7 +55,7 @@ export default function ChatInput({ onSendMessage, disabled = false, onUseCurren
         <div className="mb-3">
           <button
             type="button"
-            onClick={onUseCurrentLocation}
+            onClick={handleUseCurrentLocation}
             disabled={disabled}
             className="px-4 py-2 bg-white border-2 border-blue-500 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >

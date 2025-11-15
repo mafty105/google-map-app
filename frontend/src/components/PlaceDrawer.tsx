@@ -134,17 +134,7 @@ export default function PlaceDrawer({
   };
 
   return (
-    <>
-      {/* Background Overlay */}
-      <div
-        className={`fixed inset-0 bg-black z-40 transition-opacity duration-300 ${
-          isMounted ? 'bg-opacity-50' : 'bg-opacity-0'
-        }`}
-        onClick={onClose}
-      />
-
-      {/* Drawer */}
-      <div
+    <div
         className={`
           fixed z-50 bg-white shadow-2xl overflow-hidden
           md:top-0 md:right-0 md:h-full md:w-2/5
@@ -421,6 +411,5 @@ export default function PlaceDrawer({
           </div>
         )}
       </div>
-    </>
   );
 }

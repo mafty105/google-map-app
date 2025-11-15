@@ -295,133 +295,125 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 session.session_id,
                 location=Location(address="現在地", lat=lat, lng=lng)
             )
+            logger.info(f"Set current location: ({lat}, {lng})")
 
-            # Ask for what they want to do
+        # Extract preferences from free-form input using AI
+        # (even if coordinates were detected, the message might contain more info)
+        try:
+            extracted = vertex_ai_service.extract_preferences_from_freeform(user_message)
+            logger.info(f"Extracted from free-form: {extracted}")
+
+            # Update preferences with extracted data
+            # Only update location if we didn't already set it from coordinates
+            if extracted.get("location", {}).get("address") and not coord_match:
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    location=Location(address=extracted["location"]["address"], lat=None, lng=None)
+                )
+
+            if extracted.get("travel_time", {}).get("value"):
+                travel_time_data = extracted["travel_time"]
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    travel_time=TravelTime(
+                        value=travel_time_data["value"],
+                        unit=travel_time_data.get("unit", "minutes"),
+                        direction=travel_time_data.get("direction", "one-way")
+                    )
+                )
+
+            if extracted.get("activity_type"):
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    activity_type=extracted["activity_type"]
+                )
+
+            if extracted.get("child_age"):
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    child_age=extracted["child_age"]
+                )
+
+            if extracted.get("transportation"):
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    transportation=extracted["transportation"]
+                )
+
+            if extracted.get("meals"):
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    meals=extracted["meals"]
+                )
+
+            # Transition to FREE_INPUT or directly to plan generation
+            session = conversation_manager.get_session(session.session_id)
+
+            # Check if we can generate plan now
+            if extracted.get("enough_to_generate") and conversation_manager.has_sufficient_preferences(session):
+                # Try to generate plan directly
+                conversation_manager.transition_state(
+                    session.session_id,
+                    ConversationState.GENERATING_PLAN
+                )
+                # Re-call _generate_response to handle plan generation
+                return _generate_response(session, user_message)
+            else:
+                # Need more info - transition to FREE_INPUT
+                conversation_manager.transition_state(
+                    session.session_id,
+                    ConversationState.FREE_INPUT
+                )
+
+                # Get critical missing info
+                missing_info = conversation_manager.get_critical_missing_info(session)
+                if missing_info:
+                    # Generate a clarifying question
+                    from app.services.prompts import PromptTemplates
+                    prefs_dict = {
+                        "location": {"address": session.user_preferences.location.address},
+                        "travel_time": session.user_preferences.travel_time.value if session.user_preferences.travel_time else None,
+                        "activity_type": session.user_preferences.activity_type,
+                        "child_age": session.user_preferences.child_age,
+                    }
+
+                    # For now, use a simple question based on first missing item
+                    priority_item = missing_info[0]
+                    quick_replies = []
+
+                    if priority_item == "location":
+                        question = "どちらから出発されますか？"
+                        quick_replies = []
+                    elif priority_item == "child_age":
+                        question = "お子様は何歳ですか？"
+                        quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
+                    elif priority_item == "transportation":
+                        question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
+                        quick_replies = ["車", "電車・バス"]
+                    elif priority_item == "travel_time":
+                        question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
+                        quick_replies = ["30分以内", "1時間以内", "2時間以内"]
+                    else:
+                        question = "他に希望はありますか？"
+                        quick_replies = []
+
+                    return (question, quick_replies, None)
+                else:
+                    # Shouldn't reach here, but just in case
+                    return ("ありがとうございます。プランを作成しますね。", [], None)
+
+        except Exception as e:
+            logger.error(f"Failed to extract preferences: {e}")
+            # Fall back to asking for location
             conversation_manager.transition_state(
                 session.session_id,
                 ConversationState.FREE_INPUT
             )
             return (
-                "現在地を出発地に設定しました。\n\nどこへ行きたいか、何をしたいか教えてください。\n例：「子供と一緒に動物園に行きたい」",
+                "どこへ行きたいか、もう少し詳しく教えていただけますか？\n例：「新宿から1時間くらいで行ける子供向けの場所」",
                 [],
                 None
             )
-        else:
-            # Extract preferences from free-form input using AI
-            try:
-                extracted = vertex_ai_service.extract_preferences_from_freeform(user_message)
-                logger.info(f"Extracted from free-form: {extracted}")
-
-                # Update preferences with extracted data
-                if extracted.get("location", {}).get("address"):
-                    conversation_manager.update_preferences(
-                        session.session_id,
-                        location=Location(address=extracted["location"]["address"], lat=None, lng=None)
-                    )
-
-                if extracted.get("travel_time", {}).get("value"):
-                    travel_time_data = extracted["travel_time"]
-                    conversation_manager.update_preferences(
-                        session.session_id,
-                        travel_time=TravelTime(
-                            value=travel_time_data["value"],
-                            unit=travel_time_data.get("unit", "minutes"),
-                            direction=travel_time_data.get("direction", "one-way")
-                        )
-                    )
-
-                if extracted.get("activity_type"):
-                    conversation_manager.update_preferences(
-                        session.session_id,
-                        activity_type=extracted["activity_type"]
-                    )
-
-                if extracted.get("child_age"):
-                    conversation_manager.update_preferences(
-                        session.session_id,
-                        child_age=extracted["child_age"]
-                    )
-
-                if extracted.get("transportation"):
-                    conversation_manager.update_preferences(
-                        session.session_id,
-                        transportation=extracted["transportation"]
-                    )
-
-                if extracted.get("meals"):
-                    conversation_manager.update_preferences(
-                        session.session_id,
-                        meals=extracted["meals"]
-                    )
-
-                # Transition to FREE_INPUT or directly to plan generation
-                session = conversation_manager.get_session(session.session_id)
-
-                # Check if we can generate plan now
-                if extracted.get("enough_to_generate") and conversation_manager.has_sufficient_preferences(session):
-                    # Try to generate plan directly
-                    conversation_manager.transition_state(
-                        session.session_id,
-                        ConversationState.GENERATING_PLAN
-                    )
-                    # Re-call _generate_response to handle plan generation
-                    return _generate_response(session, user_message)
-                else:
-                    # Need more info - transition to FREE_INPUT
-                    conversation_manager.transition_state(
-                        session.session_id,
-                        ConversationState.FREE_INPUT
-                    )
-
-                    # Get critical missing info
-                    missing_info = conversation_manager.get_critical_missing_info(session)
-                    if missing_info:
-                        # Generate a clarifying question
-                        from app.services.prompts import PromptTemplates
-                        prefs_dict = {
-                            "location": {"address": session.user_preferences.location.address},
-                            "travel_time": session.user_preferences.travel_time.value if session.user_preferences.travel_time else None,
-                            "activity_type": session.user_preferences.activity_type,
-                            "child_age": session.user_preferences.child_age,
-                        }
-
-                        # For now, use a simple question based on first missing item
-                        priority_item = missing_info[0]
-                        quick_replies = []
-
-                        if priority_item == "location":
-                            question = "どちらから出発されますか？"
-                            quick_replies = []
-                        elif priority_item == "child_age":
-                            question = "お子様は何歳ですか？"
-                            quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                        elif priority_item == "transportation":
-                            question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
-                            quick_replies = ["車", "電車・バス"]
-                        elif priority_item == "travel_time":
-                            question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
-                            quick_replies = ["30分以内", "1時間以内", "2時間以内"]
-                        else:
-                            question = "他に希望はありますか？"
-                            quick_replies = []
-
-                        return (question, quick_replies, None)
-                    else:
-                        # Shouldn't reach here, but just in case
-                        return ("ありがとうございます。プランを作成しますね。", [], None)
-
-            except Exception as e:
-                logger.error(f"Failed to extract preferences: {e}")
-                # Fall back to asking for location
-                conversation_manager.transition_state(
-                    session.session_id,
-                    ConversationState.FREE_INPUT
-                )
-                return (
-                    "どこへ行きたいか、もう少し詳しく教えていただけますか？\n例：「新宿から1時間くらいで行ける子供向けの場所」",
-                    [],
-                    None
-                )
 
     elif session.state == ConversationState.FREE_INPUT:
         logger.info("State is FREE_INPUT - processing additional user input")

@@ -75,8 +75,8 @@ export default function ChatContainer() {
     if (sessionId && messages.length === 0) {
       addGreeting(
         'こんにちは！週末のお出かけプランをお手伝いします。\n\n' +
-          'まず、出発地を教えてください。\n' +
-          '駅名や住所を入力するか、下のボタンから現在地を選択できます。',
+          'どこへ行きたいか、何をしたいか、お気軽にお話しください。\n' +
+          '例：「子供と一緒に動物園に行きたい」「新宿から1時間以内で遊べる場所」',
       );
     }
   }, [sessionId, messages.length, addGreeting]);

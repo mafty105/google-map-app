@@ -84,14 +84,64 @@ class ConversationManager:
         return session
 
     def has_sufficient_preferences(self, session: ConversationSession) -> bool:
-        """Check if we have enough preferences to generate a plan."""
+        """
+        Check if we have enough preferences to generate a plan.
+
+        Minimum requirements:
+        - Location (explicit or current location)
+        - Basic activity intent (can be inferred)
+
+        Recommended (will ask if missing):
+        - Child age (if children mentioned)
+        - Transportation
+        - Travel time
+        """
         prefs = session.user_preferences
 
-        # Minimum required: location and travel time
+        # Must have location
         has_location = bool(prefs.location.address)
-        has_travel_time = prefs.travel_time is not None
 
-        return has_location and has_travel_time
+        # Must have at least some intent (activity type or travel time)
+        has_intent = bool(prefs.activity_type) or prefs.travel_time is not None
+
+        return has_location and has_intent
+
+    def get_critical_missing_info(self, session: ConversationSession) -> list[str]:
+        """
+        Get list of critical missing information needed for plan generation.
+
+        Priority order:
+        1. child_age - if activity type suggests children
+        2. transportation - affects accessibility
+        3. travel_time - affects range
+        4. location - if not provided
+
+        Returns:
+            List of missing info keys in priority order
+        """
+        prefs = session.user_preferences
+        missing = []
+
+        # Location is critical
+        if not prefs.location.address:
+            missing.append("location")
+
+        # Child age is critical if children are involved
+        if not prefs.child_age and (
+            prefs.activity_type and any(word in (prefs.activity_type or "").lower()
+                for word in ["子", "child", "kid", "family", "家族"])
+        ):
+            missing.append("child_age")
+
+        # Transportation affects what we can recommend
+        if not prefs.transportation:
+            missing.append("transportation")
+
+        # Travel time defines the range
+        if not prefs.travel_time:
+            missing.append("travel_time")
+
+        return missing
 
     def get_next_question(self, session: ConversationSession) -> str | None:
         """Determine the next clarifying question to ask."""

@@ -11,6 +11,7 @@ class ConversationState(str, Enum):
     """Conversation state enum."""
 
     INITIAL = "INITIAL"
+    FREE_INPUT = "FREE_INPUT"  # User can freely express their request
     GATHERING_PREFERENCES = "GATHERING_PREFERENCES"
     GENERATING_PLAN = "GENERATING_PLAN"
     PRESENTING_PLAN = "PRESENTING_PLAN"

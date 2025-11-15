@@ -18,6 +18,7 @@ interface Location {
   lat: number;
   lng: number;
   name?: string;
+  index?: number; // Marker number for display
 }
 
 /**
@@ -79,6 +80,24 @@ export default function ChatContainer() {
       );
     }
   }, [sessionId, messages.length, addGreeting]);
+
+  // Update map markers when enriched places change
+  useEffect(() => {
+    if (enrichedPlaces && enrichedPlaces.length > 0) {
+      const markers = enrichedPlaces
+        .filter((place) => place.location) // Only places with valid location
+        .map((place, index) => ({
+          lat: place.location!.lat,
+          lng: place.location!.lng,
+          name: place.name,
+          index: index + 1, // Marker number (1, 2, 3...)
+        }));
+
+      setMapMarkers(markers);
+    } else {
+      setMapMarkers([]); // Clear markers when list is cleared
+    }
+  }, [enrichedPlaces]);
 
   // Combine errors from session and chat
   const error = sessionError || chatError;
@@ -413,6 +432,7 @@ export default function ChatContainer() {
             markers={mapMarkers}
             routes={mapRoutes}
             directionsResult={directionsResult}
+            onMarkerClick={(index) => setSelectedPlaceIndex(index)}
           />
         </div>
       </div>

@@ -432,12 +432,23 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
 
                 logger.info(f"Enriched {len(enriched_places)} places with photos")
 
+                # Store shown place IDs
+                place_ids = [place["place_id"] for place in enriched_places]
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    shown_place_ids=place_ids
+                )
+
                 conversation_manager.transition_state(
                     session.session_id,
                     ConversationState.PRESENTING_PLAN
                 )
 
-                return (plan_description, None, enriched_places)
+                # Add Quick Reply to show more spots (max 2 additional requests)
+                prefs = conversation_manager.get_session(session.session_id).user_preferences
+                quick_replies = ["他の候補を見る"] if prefs.spots_request_count < 2 else None
+
+                return (plan_description, quick_replies, enriched_places)
 
             except Exception as e:
                 logger.error(f"Failed to generate plan: {e}", exc_info=True)
@@ -491,10 +502,13 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         return ("ご質問に答えていただきありがとうございます。", None, None)
 
     elif session.state == ConversationState.PRESENTING_PLAN:
-        # Handle request for alternative plans
+        # Handle request for more spot options
         if "別のプラン" in user_message or "他の提案" in user_message or "他の候補" in user_message:
-            # Regenerate plan with higher temperature for more diversity
             prefs = session.user_preferences
+
+            # Check if we've reached the limit (2 additional requests = 9 total spots)
+            if prefs.spots_request_count >= 2:
+                return ("申し訳ございませんが、これ以上の候補はご用意できません。表示されているスポットからお選びください。", None, None)
 
             try:
                 # Convert preferences to dict for prompt template
@@ -507,9 +521,11 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     "transportation": prefs.transportation,
                 }
 
-                # Generate optimized prompt with emphasis on different places
-                prompt = build_plan_generation_prompt(prefs_dict)
-                prompt += "\n\n**重要**: 前回提案した場所とは異なる施設を提案してください。特に地域の博物館や科学館など、教育的な施設も含めてください。"
+                # Generate prompt with exclusion of already-shown places
+                prompt = build_plan_generation_prompt(
+                    prefs_dict,
+                    exclude_place_ids=prefs.shown_place_ids
+                )
 
                 # Generate plan with higher temperature (0.85) for more diversity
                 result = vertex_ai_service.generate_content(
@@ -524,7 +540,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 plan_description = result["text"]
                 grounding_metadata = result["grounding_metadata"]
 
-                logger.info(f"Generated alternative plan with grounding metadata: {grounding_metadata is not None}")
+                logger.info(f"Generated additional spots with grounding metadata: {grounding_metadata is not None}")
 
                 # Extract and enrich places with photos from plan text
                 enriched_places = _extract_and_enrich_places(
@@ -532,13 +548,30 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     location_bias=(prefs_dict["location"]["lat"], prefs_dict["location"]["lng"])
                 )
 
-                logger.info(f"Enriched {len(enriched_places)} places with photos for alternative plan")
+                logger.info(f"Enriched {len(enriched_places)} additional places")
 
-                return (plan_description, None, enriched_places)
+                # Add new place IDs to shown list
+                new_place_ids = [place["place_id"] for place in enriched_places]
+                updated_place_ids = prefs.shown_place_ids + new_place_ids
+
+                # Increment request count and update shown places
+                conversation_manager.update_preferences(
+                    session.session_id,
+                    shown_place_ids=updated_place_ids,
+                    spots_request_count=prefs.spots_request_count + 1
+                )
+
+                # Refresh prefs after update
+                prefs = conversation_manager.get_session(session.session_id).user_preferences
+
+                # Add Quick Reply if we haven't reached the limit
+                quick_replies = ["他の候補を見る"] if prefs.spots_request_count < 2 else None
+
+                return (plan_description, quick_replies, enriched_places)
 
             except Exception as e:
-                logger.error(f"Failed to generate alternative plan: {e}", exc_info=True)
-                return ("申し訳ございません。別のプランの生成中に問題が発生しました。もう一度お試しください。", None, None)
+                logger.error(f"Failed to generate additional spots: {e}", exc_info=True)
+                return ("申し訳ございません。追加のスポット生成中に問題が発生しました。もう一度お試しください。", None, None)
 
         # Default response for other messages in PRESENTING_PLAN state
         return ("プランについてのご質問やご要望があればお聞かせください。", None, None)

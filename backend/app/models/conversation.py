@@ -44,6 +44,8 @@ class UserPreferences(BaseModel):
     child_age: str | None = None
     transportation: str | None = None  # "car", "public", "walking"
     special_requirements: list[str] = Field(default_factory=list)
+    shown_place_ids: list[str] = Field(default_factory=list)  # Track shown place IDs to avoid duplicates
+    spots_request_count: int = 0  # Number of additional spot requests (0, 1, 2)
 
 
 class ChatMessage(BaseModel):

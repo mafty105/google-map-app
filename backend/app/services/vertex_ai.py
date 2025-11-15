@@ -196,6 +196,73 @@ class VertexAIService:
         full_prompt = "\n".join(prompt_parts)
         return self.generate_content(full_prompt, use_grounding=use_grounding)
 
+    def extract_preferences_from_freeform(self, user_message: str) -> dict[str, Any]:
+        """
+        Extract user preferences from free-form message using AI with JSON parsing.
+
+        Args:
+            user_message: The user's free-form message
+
+        Returns:
+            Extracted preferences dictionary with keys:
+                - location: dict with 'address' and 'explicit' keys
+                - travel_time: dict with 'value', 'direction', 'unit' keys
+                - activity_type: str or None
+                - meals: list
+                - child_age: str or None
+                - transportation: str or None
+                - destination: str or None
+                - special_requirements: list
+                - enough_to_generate: bool
+        """
+        from app.services.prompts import PromptTemplates
+        import json
+        import re
+
+        prompt = PromptTemplates.extract_preferences_from_freeform(user_message)
+
+        try:
+            result = self.generate_content(
+                prompt,
+                use_grounding=False,  # No grounding needed for preference extraction
+                temperature=0.1,  # Low temperature for consistent JSON output
+            )
+
+            response_text = result["text"].strip()
+            logger.debug(f"Raw extraction response: {response_text[:200]}")
+
+            # Extract JSON from response (sometimes wrapped in markdown)
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                json_str = json_match.group(0)
+                extracted = json.loads(json_str)
+                logger.info(f"Successfully extracted preferences: {extracted}")
+                return extracted
+            else:
+                logger.warning("No JSON found in response")
+                return self._empty_extraction()
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON from extraction: {e}")
+            return self._empty_extraction()
+        except Exception as e:
+            logger.error(f"Failed to extract preferences: {e}")
+            return self._empty_extraction()
+
+    def _empty_extraction(self) -> dict[str, Any]:
+        """Return empty extraction result."""
+        return {
+            "location": {"address": None, "explicit": False},
+            "travel_time": {"value": None, "direction": None, "unit": None},
+            "activity_type": None,
+            "meals": [],
+            "child_age": None,
+            "transportation": None,
+            "destination": None,
+            "special_requirements": [],
+            "enough_to_generate": False,
+        }
+
     def extract_preferences(self, user_message: str, current_preferences: dict[str, Any]) -> dict[str, Any]:
         """
         Extract user preferences from a message using AI.

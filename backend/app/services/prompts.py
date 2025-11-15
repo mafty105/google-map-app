@@ -31,6 +31,85 @@ class PromptTemplates:
 """
 
     @staticmethod
+    def extract_preferences_from_freeform(user_message: str) -> str:
+        """
+        Create prompt to extract all possible preferences from free-form user input.
+        This uses structured JSON output for reliable parsing.
+
+        Args:
+            user_message: The user's free-form message
+
+        Returns:
+            Formatted prompt for comprehensive preference extraction
+        """
+        return f"""{PromptTemplates.SYSTEM_INSTRUCTION}
+
+ユーザーの自由な入力から、お出かけプランに必要な情報を抽出してJSON形式で返してください。
+
+ユーザーメッセージ: "{user_message}"
+
+以下の項目について、**明示的に言及されている情報のみ**抽出してください。
+推測や補完はせず、言及されていない項目はnullにしてください。
+
+JSON形式で返答してください:
+{{
+  "location": {{
+    "address": "出発地の名称（駅名、住所、ランドマーク）または null",
+    "explicit": true/false  // ユーザーが明示的に出発地を指定したか
+  }},
+  "travel_time": {{
+    "value": 移動時間の数値（分単位）または null,
+    "direction": "one-way" または "round-trip" または null,
+    "unit": "minutes" または null
+  }},
+  "activity_type": "具体的な活動内容（例: 動物園、博物館、公園、アクティブ、インドア）または null",
+  "meals": ["lunch" または "dinner" のリスト、言及がなければ空配列],
+  "child_age": "子供の年齢（例: 3, 0-3, 5-10）または null",
+  "transportation": "car" または "public" または null,
+  "destination": "目的地の名称（もし言及があれば）または null",
+  "special_requirements": ["特別な要望のリスト（例: 雨でもOK、ベビーカーOK）"],
+  "enough_to_generate": true/false  // この情報だけでプラン生成可能か
+}}
+
+抽出ルール:
+1. 出発地: 「〜から」「〜駅」「〜周辺」などの表現を探す
+2. 移動時間: 「30分」「1時間」「片道」「往復」などの表現
+3. アクティビティ: 具体的な施設名や活動内容
+4. 子供の年齢: 「3歳」「小学生」などの表現
+5. 交通手段: 「車で」「電車で」などの表現
+6. enough_to_generate: 最低限「出発地または目的地」と「大まかな希望」があればtrue
+
+例:
+入力: "3歳の子供と横浜駅から車で30分くらいで行ける動物園を探しています"
+{{
+  "location": {{"address": "横浜駅", "explicit": true}},
+  "travel_time": {{"value": 30, "direction": "one-way", "unit": "minutes"}},
+  "activity_type": "動物園",
+  "meals": [],
+  "child_age": "3",
+  "transportation": "car",
+  "destination": null,
+  "special_requirements": [],
+  "enough_to_generate": true
+}}
+
+入力: "週末に子供とどこか遊びに行きたい"
+{{
+  "location": {{"address": null, "explicit": false}},
+  "travel_time": {{"value": null, "direction": null, "unit": null}},
+  "activity_type": null,
+  "meals": [],
+  "child_age": null,
+  "transportation": null,
+  "destination": null,
+  "special_requirements": [],
+  "enough_to_generate": false
+}}
+
+**JSONのみ**を返してください。他の説明は不要です。
+"""
+
+    @staticmethod
     def extract_preferences(user_message: str, current_prefs: dict[str, Any]) -> str:
         """
         Create prompt to extract user preferences from their message.
@@ -68,13 +147,16 @@ class PromptTemplates:
     def generate_clarifying_question(
         current_prefs: dict[str, Any],
         missing_info: list[str],
+        priority_order: list[str] = ["child_age", "transportation", "travel_time", "location"],
     ) -> str:
         """
         Create prompt to generate a natural clarifying question.
+        Only asks for critical missing information in priority order.
 
         Args:
             current_prefs: Current user preferences
             missing_info: List of missing information
+            priority_order: Order of importance for missing info
 
         Returns:
             Formatted prompt for question generation
@@ -83,24 +165,46 @@ class PromptTemplates:
         if current_prefs.get("location", {}).get("address"):
             prefs_summary.append(f"出発地: {current_prefs['location']['address']}")
         if current_prefs.get("travel_time"):
-            prefs_summary.append(f"移動時間: {current_prefs['travel_time']}")
+            travel_time = current_prefs['travel_time']
+            if isinstance(travel_time, dict):
+                prefs_summary.append(f"移動時間: {travel_time.get('value', '')}分")
+            else:
+                prefs_summary.append(f"移動時間: {travel_time}")
         if current_prefs.get("activity_type"):
             prefs_summary.append(f"アクティビティ: {current_prefs['activity_type']}")
+        if current_prefs.get("child_age"):
+            prefs_summary.append(f"子供の年齢: {current_prefs['child_age']}歳")
 
         current_info = "\n".join(prefs_summary) if prefs_summary else "まだ情報がありません"
-        missing_list = "、".join(missing_info)
+
+        # Find the highest priority missing item
+        priority_missing = None
+        for item in priority_order:
+            if item in missing_info:
+                priority_missing = item
+                break
 
         return f"""{PromptTemplates.SYSTEM_INSTRUCTION}
 
-現在の情報:
+現在わかっている情報:
 {current_info}
 
-不足している情報: {missing_list}
+次に確認が必要な項目: {priority_missing if priority_missing else missing_info[0]}
 
-次に聞くべき質問を1つだけ、自然な日本語で作成してください。
-選択肢を2-3個提示すると答えやすくなります。
+この項目について、ユーザーに質問を1つだけ自然な日本語で作成してください。
 
-簡潔で親しみやすい質問を返してください。
+質問の作り方：
+1. 親しみやすく簡潔に
+2. 選択肢を2-4個提示すると答えやすい
+3. 「その他」という選択肢も追加する
+
+例:
+- location: 「どちらから出発されますか？」
+- child_age: 「お子様は何歳ですか？」（選択肢: 0-2歳、3-5歳、6-8歳、9-12歳、その他）
+- transportation: 「移動手段は車と公共交通機関、どちらをご利用予定ですか？」（選択肢: 車、電車・バス）
+- travel_time: 「移動時間はどのくらいまで大丈夫ですか？」（選択肢: 30分以内、1時間以内、2時間以内）
+
+質問文のみを返してください。説明は不要です。
 """
 
     @staticmethod

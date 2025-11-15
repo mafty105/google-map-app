@@ -7,6 +7,7 @@ interface Location {
   lat: number;
   lng: number;
   name?: string;
+  index?: number; // Marker number for display
 }
 
 interface MapDisplayProps {
@@ -15,6 +16,7 @@ interface MapDisplayProps {
   routes?: Location[][];
   directionsResult?: google.maps.DirectionsResult | null;
   zoom?: number;
+  onMarkerClick?: (index: number) => void; // Callback when marker is clicked
 }
 
 // Default location (Tokyo Station)
@@ -30,6 +32,7 @@ export default function MapDisplay({
   routes = [],
   directionsResult = null,
   zoom = 15,
+  onMarkerClick,
 }: MapDisplayProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -135,12 +138,13 @@ export default function MapDisplay({
 
     // Add new markers
     const newMarkers = markers.map((location, index) => {
+      const markerNumber = location.index || index + 1;
       const marker = new google.maps.Marker({
         position: { lat: location.lat, lng: location.lng },
         map: map,
-        title: location.name || `Location ${index + 1}`,
+        title: location.name || `スポット ${markerNumber}`,
         label: {
-          text: `${index + 1}`,
+          text: String(markerNumber),
           color: 'white',
           fontSize: '14px',
           fontWeight: 'bold',
@@ -165,6 +169,11 @@ export default function MapDisplay({
 
         marker.addListener('click', () => {
           infoWindow.open(map, marker);
+
+          // Call the callback to open drawer
+          if (onMarkerClick && location.index !== undefined) {
+            onMarkerClick(location.index - 1); // Convert to 0-indexed
+          }
         });
       }
 
@@ -173,7 +182,7 @@ export default function MapDisplay({
 
     setMapMarkers(newMarkers);
 
-    // Adjust map bounds to show all markers
+    // Adjust map bounds to show all markers with padding
     if (newMarkers.length > 0) {
       const bounds = new google.maps.LatLngBounds();
       newMarkers.forEach((marker) => {
@@ -182,7 +191,14 @@ export default function MapDisplay({
           bounds.extend(position);
         }
       });
-      map.fitBounds(bounds);
+
+      // Add padding to ensure markers aren't at the edge
+      map.fitBounds(bounds, {
+        top: 80,
+        right: 80,
+        bottom: 80,
+        left: 80,
+      });
     }
   }, [map, markers]);
 

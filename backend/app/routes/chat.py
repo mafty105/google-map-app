@@ -347,9 +347,9 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
 
         # Store child age if provided
         if "歳" in user_message or "才" in user_message:
-            # Extract age from message
+            # Extract age from message (supports both "3歳" and "0-3歳" formats)
             import re
-            age_match = re.search(r'(\d+)[歳才]', user_message)
+            age_match = re.search(r'(\d+(?:-\d+)?)[歳才]', user_message)
             if age_match:
                 conversation_manager.update_preferences(
                     session.session_id,
@@ -469,8 +469,8 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
 
         if prefs.activity_type and prefs.meals is not None and not prefs.child_age:
             return (
-                "お子様の年齢を教えてください。（例: 3歳、5歳）",
-                None,
+                "お子様の年齢を教えてください。",
+                ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"],
                 None
             )
 

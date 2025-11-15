@@ -6,6 +6,7 @@ import MapDisplay from './MapDisplay';
 import PlanSummary from './PlanSummary';
 import EnrichedPlaceCard from './EnrichedPlaceCard';
 import PlaceDrawer from './PlaceDrawer';
+import AgeSelector from './AgeSelector';
 import type { TravelPlan } from '../types/plan';
 import { mockPlan } from '../data/mockPlan';
 import { useSession } from '../hooks/useSession';
@@ -47,6 +48,9 @@ export default function ChatContainer() {
   // Drawer state
   const [selectedPlaceIndex, setSelectedPlaceIndex] = useState<number | null>(null);
 
+  // Age selector state
+  const [showAgeSelector, setShowAgeSelector] = useState(false);
+
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,6 +77,18 @@ export default function ChatContainer() {
   // Handle quick reply click
   const handleQuickReply = (reply: string) => {
     sendMessage(reply);
+  };
+
+  // Handle special reply (opens age selector)
+  const handleSpecialReply = (reply: string) => {
+    if (reply === 'その他') {
+      setShowAgeSelector(true);
+    }
+  };
+
+  // Handle age confirmation from selector
+  const handleAgeConfirm = (age: string) => {
+    sendMessage(age);
   };
 
   // Handle use current location
@@ -297,7 +313,11 @@ export default function ChatContainer() {
 
               {/* Quick Replies */}
               {!isLoading && !currentPlan && quickReplies.length > 0 && (
-                <QuickReplies replies={quickReplies} onReplyClick={handleQuickReply} />
+                <QuickReplies
+                  replies={quickReplies}
+                  onReplyClick={handleQuickReply}
+                  onSpecialReply={handleSpecialReply}
+                />
               )}
 
               {/* Scroll anchor */}
@@ -331,6 +351,13 @@ export default function ChatContainer() {
           hasNext={selectedPlaceIndex < enrichedPlaces.length - 1}
         />
       )}
+
+      {/* Age Selector Modal */}
+      <AgeSelector
+        isOpen={showAgeSelector}
+        onClose={() => setShowAgeSelector(false)}
+        onConfirm={handleAgeConfirm}
+      />
     </div>
   );
 }

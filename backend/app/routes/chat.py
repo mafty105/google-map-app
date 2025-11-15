@@ -423,6 +423,29 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         prefs = session.user_preferences
         keyword_matched = False
 
+        # Handle activity type keywords
+        if "公園" in user_message or "屋外" in user_message or "公園・屋外施設" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                activity_type="公園・屋外"
+            )
+            keyword_matched = True
+            logger.info("Matched activity_type keyword: 公園・屋外")
+        elif "室内" in user_message or "博物館" in user_message or "科学館" in user_message or "室内施設" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                activity_type="室内施設"
+            )
+            keyword_matched = True
+            logger.info("Matched activity_type keyword: 室内施設")
+        elif "アクティブ" in user_message or "遊べる" in user_message or "アクティブに遊べる場所" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                activity_type="アクティブ"
+            )
+            keyword_matched = True
+            logger.info("Matched activity_type keyword: アクティブ")
+
         # Handle transportation keywords
         if "車" in user_message or "car" in user_message.lower():
             if "ある" in user_message or "あり" in user_message or "使える" in user_message or user_message.strip() == "車":
@@ -439,6 +462,43 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             )
             keyword_matched = True
             logger.info("Matched transportation keyword: public")
+
+        # Handle meals keywords
+        if "昼食" in user_message and "夕食" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                meals=["lunch", "dinner"]
+            )
+            keyword_matched = True
+            logger.info("Matched meals keyword: lunch and dinner")
+        elif "両方" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                meals=["lunch", "dinner"]
+            )
+            keyword_matched = True
+            logger.info("Matched meals keyword: both")
+        elif "昼食" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                meals=["lunch"]
+            )
+            keyword_matched = True
+            logger.info("Matched meals keyword: lunch")
+        elif "夕食" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                meals=["dinner"]
+            )
+            keyword_matched = True
+            logger.info("Matched meals keyword: dinner")
+        elif "食事なし" in user_message or "いらない" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                meals=[]
+            )
+            keyword_matched = True
+            logger.info("Matched meals keyword: none")
 
         # Handle child age patterns
         if "歳" in user_message or "才" in user_message:
@@ -484,22 +544,37 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             missing_info = conversation_manager.get_critical_missing_info(session)
 
             if missing_info and len(missing_info) > 0:
-                # Only ask for truly critical info (location or child_age if children mentioned)
+                # Ask specific, detailed questions to improve plan quality
                 priority_item = missing_info[0]
 
-                if priority_item == "child_age":
+                if priority_item == "activity_type":
+                    question = "どのような場所をお探しですか？"
+                    quick_replies = ["公園・屋外施設", "室内施設（博物館・科学館など）", "アクティブに遊べる場所", "その他"]
+                    logger.info(f"Asking for: {priority_item}")
+                    return (question, quick_replies, None)
+                elif priority_item == "transportation":
+                    question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
+                    quick_replies = ["車", "電車・バス"]
+                    logger.info(f"Asking for: {priority_item}")
+                    return (question, quick_replies, None)
+                elif priority_item == "child_age":
                     question = "お子様は何歳ですか？"
                     quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                    logger.info(f"Asking for critical item: {priority_item}")
+                    logger.info(f"Asking for: {priority_item}")
+                    return (question, quick_replies, None)
+                elif priority_item == "meals":
+                    question = "昼食や夕食はお取りになりますか？"
+                    quick_replies = ["昼食", "夕食", "両方", "食事なし"]
+                    logger.info(f"Asking for: {priority_item}")
                     return (question, quick_replies, None)
                 elif priority_item == "location":
                     question = "どこから出発されますか？"
                     quick_replies = []
-                    logger.info(f"Asking for critical item: {priority_item}")
+                    logger.info(f"Asking for: {priority_item}")
                     return (question, quick_replies, None)
                 else:
-                    # For any other items, just generate (shouldn't happen with new logic)
-                    logger.info(f"Unexpected missing item {priority_item}, generating anyway")
+                    # Shouldn't happen
+                    logger.warning(f"Unexpected missing item: {priority_item}")
 
             # Ready to generate!
             logger.info("Sufficient preferences collected, transitioning to GENERATING_PLAN")
@@ -577,22 +652,37 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     missing_info = conversation_manager.get_critical_missing_info(session)
 
                     if missing_info and len(missing_info) > 0:
-                        # Only ask for truly critical info (location or child_age if children mentioned)
+                        # Ask specific, detailed questions to improve plan quality
                         priority_item = missing_info[0]
 
-                        if priority_item == "child_age":
+                        if priority_item == "activity_type":
+                            question = "どのような場所をお探しですか？"
+                            quick_replies = ["公園・屋外施設", "室内施設（博物館・科学館など）", "アクティブに遊べる場所", "その他"]
+                            logger.info(f"Asking after AI extraction: {priority_item}")
+                            return (question, quick_replies, None)
+                        elif priority_item == "transportation":
+                            question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
+                            quick_replies = ["車", "電車・バス"]
+                            logger.info(f"Asking after AI extraction: {priority_item}")
+                            return (question, quick_replies, None)
+                        elif priority_item == "child_age":
                             question = "お子様は何歳ですか？"
                             quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                            logger.info(f"Asking for critical item after AI extraction: {priority_item}")
+                            logger.info(f"Asking after AI extraction: {priority_item}")
+                            return (question, quick_replies, None)
+                        elif priority_item == "meals":
+                            question = "昼食や夕食はお取りになりますか？"
+                            quick_replies = ["昼食", "夕食", "両方", "食事なし"]
+                            logger.info(f"Asking after AI extraction: {priority_item}")
                             return (question, quick_replies, None)
                         elif priority_item == "location":
                             question = "どこから出発されますか？"
                             quick_replies = []
-                            logger.info(f"Asking for critical item after AI extraction: {priority_item}")
+                            logger.info(f"Asking after AI extraction: {priority_item}")
                             return (question, quick_replies, None)
                         else:
-                            # For any other items, just generate (shouldn't happen)
-                            logger.info(f"Unexpected missing item {priority_item}, generating anyway")
+                            # Shouldn't happen
+                            logger.warning(f"Unexpected missing item after AI extraction: {priority_item}")
 
                     # Ready to generate!
                     logger.info("Sufficient preferences collected after AI extraction, transitioning to GENERATING_PLAN")

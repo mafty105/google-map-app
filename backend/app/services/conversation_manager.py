@@ -110,36 +110,32 @@ class ConversationManager:
         """
         Get list of critical missing information needed for plan generation.
 
-        Priority order:
-        1. child_age - if activity type suggests children
-        2. transportation - affects accessibility
-        3. travel_time - affects range
-        4. location - if not provided
+        Critical = absolutely required, no defaults available
+        Optional = nice to have, but we can generate a plan without it
 
         Returns:
-            List of missing info keys in priority order
+            List of missing critical info keys in priority order
         """
         prefs = session.user_preferences
         missing = []
 
-        # Location is critical
+        # Location is the ONLY truly critical piece - we can't generate without it
         if not prefs.location.address:
             missing.append("location")
 
-        # Child age is critical if children are involved
+        # Everything else is optional:
+        # - transportation: defaults to "public" if not specified
+        # - travel_time: defaults to 60 minutes if not specified
+        # - activity_type: defaults to "家族向け" if not specified
+        # - child_age: only needed if children explicitly mentioned
+        # - meals: defaults to empty list
+
+        # Child age is semi-critical if children are explicitly involved
         if not prefs.child_age and (
             prefs.activity_type and any(word in (prefs.activity_type or "").lower()
                 for word in ["子", "child", "kid", "family", "家族"])
         ):
             missing.append("child_age")
-
-        # Transportation affects what we can recommend
-        if not prefs.transportation:
-            missing.append("transportation")
-
-        # Travel time defines the range
-        if not prefs.travel_time:
-            missing.append("travel_time")
 
         return missing
 

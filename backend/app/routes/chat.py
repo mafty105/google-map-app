@@ -479,39 +479,39 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
 
         # Check if we have enough to generate after keyword matching
         if conversation_manager.has_sufficient_preferences(session):
+            # We have location + (activity_type OR travel_time), which is enough
+            # Only check if there are truly critical missing pieces
             missing_info = conversation_manager.get_critical_missing_info(session)
 
-            if not missing_info or len(missing_info) == 0:
-                # Ready to generate!
-                logger.info("Sufficient preferences collected, transitioning to GENERATING_PLAN")
-                conversation_manager.transition_state(
-                    session.session_id,
-                    ConversationState.GENERATING_PLAN
-                )
-                return _generate_response(session, user_message)
-            else:
-                # Ask for one more critical piece
+            if missing_info and len(missing_info) > 0:
+                # Only ask for truly critical info (location or child_age if children mentioned)
                 priority_item = missing_info[0]
-                quick_replies = []
 
                 if priority_item == "child_age":
                     question = "お子様は何歳ですか？"
                     quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                elif priority_item == "transportation":
-                    question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
-                    quick_replies = ["車", "電車・バス"]
-                elif priority_item == "travel_time":
-                    question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
-                    quick_replies = ["30分以内", "1時間以内", "2時間以内"]
-                else:
-                    question = "他に希望はありますか？"
+                    logger.info(f"Asking for critical item: {priority_item}")
+                    return (question, quick_replies, None)
+                elif priority_item == "location":
+                    question = "どこから出発されますか？"
                     quick_replies = []
+                    logger.info(f"Asking for critical item: {priority_item}")
+                    return (question, quick_replies, None)
+                else:
+                    # For any other items, just generate (shouldn't happen with new logic)
+                    logger.info(f"Unexpected missing item {priority_item}, generating anyway")
 
-                logger.info(f"Still need: {priority_item}")
-                return (question, quick_replies, None)
+            # Ready to generate!
+            logger.info("Sufficient preferences collected, transitioning to GENERATING_PLAN")
+            conversation_manager.transition_state(
+                session.session_id,
+                ConversationState.GENERATING_PLAN
+            )
+            return _generate_response(session, user_message)
 
         # If keyword matching didn't provide enough info, try AI extraction
-        if not keyword_matched or not conversation_manager.has_sufficient_preferences(session):
+        # This handles complex natural language inputs
+        if not keyword_matched:
             try:
                 logger.info("Using AI extraction for complex input")
                 extracted = vertex_ai_service.extract_preferences_from_freeform(user_message)
@@ -576,34 +576,31 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     # Check for critical missing info
                     missing_info = conversation_manager.get_critical_missing_info(session)
 
-                    if not missing_info or len(missing_info) == 0:
-                        # Ready to generate!
-                        logger.info("Sufficient preferences collected after AI extraction, transitioning to GENERATING_PLAN")
-                        conversation_manager.transition_state(
-                            session.session_id,
-                            ConversationState.GENERATING_PLAN
-                        )
-                        return _generate_response(session, user_message)
-                    else:
-                        # Ask for one more critical piece
+                    if missing_info and len(missing_info) > 0:
+                        # Only ask for truly critical info (location or child_age if children mentioned)
                         priority_item = missing_info[0]
-                        quick_replies = []
 
                         if priority_item == "child_age":
                             question = "お子様は何歳ですか？"
                             quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                        elif priority_item == "transportation":
-                            question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
-                            quick_replies = ["車", "電車・バス"]
-                        elif priority_item == "travel_time":
-                            question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
-                            quick_replies = ["30分以内", "1時間以内", "2時間以内"]
-                        else:
-                            question = "他に希望はありますか？"
+                            logger.info(f"Asking for critical item after AI extraction: {priority_item}")
+                            return (question, quick_replies, None)
+                        elif priority_item == "location":
+                            question = "どこから出発されますか？"
                             quick_replies = []
+                            logger.info(f"Asking for critical item after AI extraction: {priority_item}")
+                            return (question, quick_replies, None)
+                        else:
+                            # For any other items, just generate (shouldn't happen)
+                            logger.info(f"Unexpected missing item {priority_item}, generating anyway")
 
-                        logger.info(f"Still need after AI extraction: {priority_item}")
-                        return (question, quick_replies, None)
+                    # Ready to generate!
+                    logger.info("Sufficient preferences collected after AI extraction, transitioning to GENERATING_PLAN")
+                    conversation_manager.transition_state(
+                        session.session_id,
+                        ConversationState.GENERATING_PLAN
+                    )
+                    return _generate_response(session, user_message)
                 else:
                     # Still missing basic info
                     logger.warning("Still missing basic info after AI extraction")

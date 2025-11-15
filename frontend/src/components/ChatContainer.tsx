@@ -5,6 +5,7 @@ import QuickReplies from './QuickReplies';
 import MapDisplay from './MapDisplay';
 import PlanSummary from './PlanSummary';
 import EnrichedPlaceCard from './EnrichedPlaceCard';
+import PlaceDrawer from './PlaceDrawer';
 import type { TravelPlan } from '../types/plan';
 import { mockPlan } from '../data/mockPlan';
 import { useSession } from '../hooks/useSession';
@@ -42,6 +43,9 @@ export default function ChatContainer() {
   });
   const [mapMarkers, setMapMarkers] = useState<Location[]>([]);
   const [mapRoutes, setMapRoutes] = useState<Location[][]>([]);
+
+  // Drawer state
+  const [selectedPlaceIndex, setSelectedPlaceIndex] = useState<number | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -118,9 +122,28 @@ export default function ChatContainer() {
     setQuickReplies([]);
   };
 
-  const handlePlaceClick = (activityId: string) => {
-    console.log('Place clicked:', activityId);
-    // TODO: Highlight place on map or show details
+  const handlePlaceClick = (placeId: string) => {
+    // Find the index of the place in enrichedPlaces
+    const index = enrichedPlaces.findIndex((p) => p.place_id === placeId);
+    if (index !== -1) {
+      setSelectedPlaceIndex(index);
+    }
+  };
+
+  const handleCloseDrawer = () => {
+    setSelectedPlaceIndex(null);
+  };
+
+  const handlePreviousPlace = () => {
+    if (selectedPlaceIndex !== null && selectedPlaceIndex > 0) {
+      setSelectedPlaceIndex(selectedPlaceIndex - 1);
+    }
+  };
+
+  const handleNextPlace = () => {
+    if (selectedPlaceIndex !== null && selectedPlaceIndex < enrichedPlaces.length - 1) {
+      setSelectedPlaceIndex(selectedPlaceIndex + 1);
+    }
   };
 
   const handleSeeMoreOptions = () => {
@@ -258,17 +281,14 @@ export default function ChatContainer() {
               {enrichedPlaces && enrichedPlaces.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                    おすすめスポット
+                    おすすめスポット ({enrichedPlaces.length}件)
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-3">
                     {enrichedPlaces.map((place) => (
                       <EnrichedPlaceCard
                         key={place.place_id}
                         place={place}
-                        onClick={(placeId) => {
-                          console.log('Place clicked:', placeId);
-                          // TODO: Highlight place on map or show details
-                        }}
+                        onClick={handlePlaceClick}
                       />
                     ))}
                   </div>
@@ -298,6 +318,19 @@ export default function ChatContainer() {
           <MapDisplay markers={mapMarkers} routes={mapRoutes} />
         </div>
       </div>
+
+      {/* Place Drawer */}
+      {selectedPlaceIndex !== null && enrichedPlaces[selectedPlaceIndex] && (
+        <PlaceDrawer
+          place={enrichedPlaces[selectedPlaceIndex]}
+          isOpen={selectedPlaceIndex !== null}
+          onClose={handleCloseDrawer}
+          onPrevious={handlePreviousPlace}
+          onNext={handleNextPlace}
+          hasPrevious={selectedPlaceIndex > 0}
+          hasNext={selectedPlaceIndex < enrichedPlaces.length - 1}
+        />
+      )}
     </div>
   );
 }

@@ -12,6 +12,14 @@ export interface SessionResponse {
   message: string;
 }
 
+export interface PlaceReview {
+  author_name: string;
+  rating: number;
+  text: string;
+  time: number;
+  relative_time_description: string;
+}
+
 export interface EnrichedPlace {
   id: string;
   place_id: string;
@@ -28,6 +36,8 @@ export interface EnrichedPlace {
   website?: string;
   phone?: string;
   types?: string[];
+  reviews?: PlaceReview[];
+  llm_description?: string;
 }
 
 export interface ChatResponse {

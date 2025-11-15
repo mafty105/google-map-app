@@ -46,6 +46,38 @@ def _convert_location_to_dict(location) -> dict:
         }
 
 
+def _extract_place_descriptions(plan_text: str) -> dict[str, str]:
+    """
+    Extract place descriptions from plan text.
+
+    Args:
+        plan_text: Generated plan text from Vertex AI with markdown format
+
+    Returns:
+        Dict mapping place names to their descriptions
+    """
+    descriptions = {}
+
+    # Split by ### headers to get each place section
+    sections = re.split(r'(###\s*\d+\.\s*\*?\*?[^\n*]+\*?\*?)', plan_text)
+
+    # Process sections in pairs (header, content)
+    for i in range(1, len(sections), 2):
+        if i + 1 < len(sections):
+            header = sections[i]
+            content = sections[i + 1]
+
+            # Extract place name from header
+            name_match = re.search(r'###\s*\d+\.\s*\*?\*?([^\n*]+)\*?\*?', header)
+            if name_match:
+                place_name = name_match.group(1).strip()
+                # Store the full description (header + content)
+                descriptions[place_name] = (header + content).strip()
+
+    logger.info(f"Extracted descriptions for {len(descriptions)} places")
+    return descriptions
+
+
 def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float] | None = None) -> list[dict]:
     """
     Extract facility names from plan text and enrich with Google Places data.
@@ -57,6 +89,9 @@ def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float
     Returns:
         List of enriched place dicts with photos, ratings, etc.
     """
+    # Extract place descriptions first
+    place_descriptions = _extract_place_descriptions(plan_text)
+
     # Extract facility names using regex pattern: ### 1. [施設名]
     pattern = r'###\s*\d+\.\s*\*?\*?([^\n*]+)\*?\*?'
     matches = re.findall(pattern, plan_text)
@@ -83,7 +118,7 @@ def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float
 
             place_id = place["place_id"]
 
-            # Get detailed information including photos
+            # Get detailed information including photos and reviews
             details = google_maps_service.get_place_details(
                 place_id=place_id,
                 fields=[
@@ -97,6 +132,7 @@ def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float
                     "website",
                     "formatted_phone_number",
                     "type",
+                    "review",
                 ],
             )
 
@@ -108,6 +144,21 @@ def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float
                 if photo_reference:
                     # Build photo URL (400px width)
                     photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference={photo_reference}&key={google_maps_service.client.key}"
+
+            # Extract top reviews (max 5)
+            reviews = []
+            if details.get("reviews"):
+                for review in details["reviews"][:5]:
+                    reviews.append({
+                        "author_name": review.get("author_name"),
+                        "rating": review.get("rating"),
+                        "text": review.get("text"),
+                        "time": review.get("time"),
+                        "relative_time_description": review.get("relative_time_description"),
+                    })
+
+            # Get LLM description for this place
+            llm_description = place_descriptions.get(facility_name)
 
             enriched_place = {
                 "id": place_id,
@@ -122,10 +173,12 @@ def _extract_and_enrich_places(plan_text: str, location_bias: tuple[float, float
                 "website": details.get("website"),
                 "phone": details.get("formatted_phone_number"),
                 "types": details.get("types", []),
+                "reviews": reviews if reviews else None,
+                "llm_description": llm_description,
             }
 
             enriched_places.append(enriched_place)
-            logger.info(f"Enriched place: {enriched_place['name']} with photo: {photo_url is not None}")
+            logger.info(f"Enriched place: {enriched_place['name']} with photo: {photo_url is not None}, description: {llm_description is not None}")
 
         except Exception as e:
             logger.error(f"Failed to enrich place '{facility_name}': {e}", exc_info=True)

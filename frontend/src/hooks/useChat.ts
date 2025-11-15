@@ -42,9 +42,17 @@ export function useChat(sessionId: string | null) {
       try {
         const response = await chatAPI.sendMessage(sessionId, messageText);
 
+        // Determine what message to show
+        let displayText = response.response;
+
+        // If we have enriched places, show a simple message instead of the full plan description
+        if (response.enriched_places && response.enriched_places.length > 0) {
+          displayText = `${response.enriched_places.length}件のおすすめスポットを見つけました。詳細は下のリストから各スポットをクリックしてご確認ください。`;
+        }
+
         // Add assistant response
         const assistantMessage: Message = {
-          text: response.response,
+          text: displayText,
           isUser: false,
           timestamp: new Date().toISOString(),
         };

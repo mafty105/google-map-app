@@ -69,8 +69,9 @@ export function useChat(sessionId: string | null) {
         }
 
         // Update enriched places if provided
+        // Append new places to existing ones (for "show more" functionality)
         if (response.enriched_places && response.enriched_places.length > 0) {
-          setEnrichedPlaces(response.enriched_places);
+          setEnrichedPlaces((prev) => [...prev, ...(response.enriched_places || [])]);
         }
 
         return response;

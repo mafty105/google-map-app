@@ -312,7 +312,7 @@ export default function ChatContainer() {
               )}
 
               {/* Quick Replies */}
-              {!isLoading && !currentPlan && quickReplies.length > 0 && (
+              {!isLoading && quickReplies.length > 0 && (
                 <QuickReplies
                   replies={quickReplies}
                   onReplyClick={handleQuickReply}

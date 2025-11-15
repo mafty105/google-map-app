@@ -113,6 +113,7 @@ class PromptTemplates:
         transportation: str | None = None,
         latitude: float | None = None,
         longitude: float | None = None,
+        exclude_place_ids: list[str] | None = None,
     ) -> str:
         """
         Create optimized prompt for travel plan generation with Maps grounding.
@@ -195,6 +196,20 @@ class PromptTemplates:
 - 実際の施設名、住所、アクセス情報を正確に記載
 - 移動時間は現実的な時間を
 - 簡潔かつ具体的に（各施設200文字程度）
+{_generate_exclusion_section(exclude_place_ids)}
+"""
+
+
+def _generate_exclusion_section(exclude_place_ids: list[str] | None) -> str:
+    """Generate exclusion section for already-shown places."""
+    if not exclude_place_ids or len(exclude_place_ids) == 0:
+        return ""
+
+    return f"""
+
+## 除外する施設
+以下のGoogle Place IDは既に提案済みです。**必ずこれらの施設を除外し、別の施設を提案してください**:
+{chr(10).join(f"- {place_id}" for place_id in exclude_place_ids)}
 """
 
     @staticmethod

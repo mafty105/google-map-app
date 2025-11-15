@@ -283,12 +283,16 @@ def _generate_exclusion_section(exclude_place_ids: list[str] | None) -> str:
 
 
 # Convenience functions for common use cases
-def build_plan_generation_prompt(preferences: dict[str, Any]) -> str:
+def build_plan_generation_prompt(
+    preferences: dict[str, Any],
+    exclude_place_ids: list[str] | None = None
+) -> str:
     """
     Build a travel plan generation prompt from user preferences dict.
 
     Args:
         preferences: Dictionary containing user preferences
+        exclude_place_ids: Optional list of place IDs to exclude from suggestions
 
     Returns:
         Formatted prompt string
@@ -305,4 +309,5 @@ def build_plan_generation_prompt(preferences: dict[str, Any]) -> str:
         transportation=preferences.get("transportation"),
         latitude=location_data.get("lat"),
         longitude=location_data.get("lng"),
+        exclude_place_ids=exclude_place_ids,
     )

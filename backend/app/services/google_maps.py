@@ -289,6 +289,8 @@ class GoogleMapsService:
                     "user_ratings_total": place.get("user_ratings_total"),
                     "types": place.get("types", []),
                     "vicinity": place.get("vicinity"),
+                    "price_level": place.get("price_level"),
+                    "photos": place.get("photos", []),
                 }
                 for place in places
             ]
@@ -296,6 +298,261 @@ class GoogleMapsService:
         except (ApiError, HTTPError, Timeout, TransportError) as e:
             logger.error(f"Places nearby API error for ({lat}, {lng}): {e}")
             raise GoogleMapsError(f"Failed to search nearby places: {e}") from e
+
+    def search_child_friendly_restaurants(
+        self,
+        lat: float,
+        lng: float,
+        radius: int = 1000,
+        max_results: int = 3,
+        child_age: int | None = None,
+        language: str = "ja",
+    ) -> list[dict[str, Any]]:
+        """Search for child-friendly restaurants near a location.
+
+        Filters for:
+        - Lower price levels (1-2 out of 4) - more affordable for families
+        - Family-friendly types (casual dining, not bars or nightclubs)
+        - Good ratings (3.5+)
+        - Excludes izakayas and adult-oriented establishments
+        - Considers child age (younger children favor family restaurants)
+
+        Args:
+            lat: Latitude of search center
+            lng: Longitude of search center
+            radius: Search radius in meters (default: 1000m)
+            max_results: Maximum number of results to return (default: 3)
+            child_age: Age of child in years (affects scoring)
+            language: Language for results (default: Japanese)
+
+        Returns:
+            List of child-friendly restaurant dictionaries with details, sorted by family score
+
+        Raises:
+            GoogleMapsError: If API call fails
+        """
+        try:
+            # Search for all nearby restaurants
+            results = self.client.places_nearby(
+                location=(lat, lng),
+                radius=radius,
+                type="restaurant",
+                language=language,
+            )
+
+            places = results.get("results", [])
+            logger.info(f"Found {len(places)} nearby restaurants")
+
+            # Filter for child-friendly criteria
+            child_friendly = []
+
+            # Types to exclude (not family-friendly)
+            exclude_types = {
+                "bar",
+                "night_club",
+                "casino",
+                "liquor_store",
+            }
+
+            # Keywords to exclude from name (izakayas, adult establishments)
+            exclude_keywords = [
+                "居酒屋",
+                "バー",
+                "飲み屋",
+                "赤提灯",
+                "立ち飲み",
+                "スナック",
+                "パブ",
+                "焼き鳥",
+                "焼鳥",
+                "もつ焼き",
+                "ホルモン",
+            ]
+
+            for place in places:
+                place_types = set(place.get("types", []))
+                place_name = place.get("name", "")
+
+                # Skip if it has excluded types
+                if place_types & exclude_types:
+                    continue
+
+                # Skip if name contains excluded keywords
+                if any(keyword in place_name for keyword in exclude_keywords):
+                    continue
+
+                # Only include places with decent ratings
+                rating = place.get("rating", 0)
+                if rating < 3.5:
+                    continue
+
+                # Prefer lower price levels (1-2) for families
+                # Price level: 0=Free, 1=Inexpensive, 2=Moderate, 3=Expensive, 4=Very Expensive
+                price_level = place.get("price_level")
+
+                # Calculate family-friendliness score
+                # Higher score = more family-friendly
+                score = rating  # Base score from rating
+
+                if price_level is not None:
+                    if price_level <= 2:
+                        score += 1.0  # Bonus for affordable prices
+                    elif price_level >= 3:
+                        score -= 0.5  # Penalty for expensive places
+
+                # Bonus for types that suggest family-friendly atmosphere
+                family_friendly_types = {
+                    "cafe",
+                    "bakery",
+                    "meal_takeaway",
+                }
+                if place_types & family_friendly_types:
+                    score += 0.5
+
+                # Big bonus for family restaurants
+                if "restaurant" in place_types:
+                    # Check if it's a family restaurant based on name
+                    family_restaurant_keywords = [
+                        "ファミレス",
+                        "ガスト",
+                        "サイゼリヤ",
+                        "ジョナサン",
+                        "デニーズ",
+                        "ロイヤルホスト",
+                        "びっくりドンキー",
+                        "ココス",
+                        "バーミヤン",
+                        "夢庵",
+                    ]
+                    if any(keyword in place_name for keyword in family_restaurant_keywords):
+                        # Family restaurants get big bonus, especially for younger children
+                        if child_age is not None and child_age <= 5:
+                            score += 2.0  # Very young children
+                        elif child_age is not None and child_age <= 10:
+                            score += 1.5  # Elementary school age
+                        else:
+                            score += 1.0  # Default family restaurant bonus
+
+                child_friendly.append({
+                    "place_id": place.get("place_id"),
+                    "name": place.get("name"),
+                    "location": place.get("geometry", {}).get("location"),
+                    "rating": rating,
+                    "user_ratings_total": place.get("user_ratings_total"),
+                    "price_level": price_level,
+                    "types": list(place_types),
+                    "vicinity": place.get("vicinity"),
+                    "family_score": score,
+                })
+
+            # Sort by family-friendliness score (highest first)
+            child_friendly.sort(key=lambda x: x["family_score"], reverse=True)
+
+            # Get more candidates than needed for secondary filtering
+            top_candidates = child_friendly[:max_results * 3]
+
+            # Enrich with detailed information and do secondary filtering
+            enriched_results = []
+            for restaurant in top_candidates:
+                place_id = restaurant["place_id"]
+
+                # Get detailed place information
+                details = self.get_place_details(
+                    place_id=place_id,
+                    fields=[
+                        "name",
+                        "rating",
+                        "user_ratings_total",
+                        "photo",
+                        "review",
+                        "type",
+                        "editorial_summary",
+                    ],
+                    language=language,
+                )
+
+                if details:
+                    # Extract reviews (up to 3)
+                    reviews = []
+                    raw_reviews = details.get("reviews", [])
+
+                    # Secondary filtering: Check reviews for izakaya keywords
+                    is_izakaya = False
+                    for review in raw_reviews[:5]:  # Check first 5 reviews
+                        review_text = review.get("text", "")
+                        if any(keyword in review_text for keyword in exclude_keywords):
+                            is_izakaya = True
+                            logger.info(f"Excluding {restaurant['name']} - izakaya keywords found in reviews")
+                            break
+
+                    if is_izakaya:
+                        continue  # Skip this restaurant
+
+                    # Extract top 3 reviews
+                    for review in raw_reviews[:3]:
+                        reviews.append({
+                            "author_name": review.get("author_name"),
+                            "rating": review.get("rating"),
+                            "text": review.get("text"),
+                            "time": review.get("relative_time_description"),
+                        })
+
+                    # Extract photo URL
+                    photo_url = None
+                    photos = details.get("photos", [])
+                    if photos:
+                        photo_reference = photos[0].get("photo_reference")
+                        if photo_reference:
+                            photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference={photo_reference}&key={settings.google_maps_api_key}"
+
+                    # Get editorial summary if available, otherwise generate from types
+                    summary = details.get("editorial_summary", {}).get("overview", "")
+
+                    if not summary:
+                        # Generate simple description from restaurant type
+                        place_types = restaurant.get("types", [])
+                        price_level = restaurant.get("price_level")
+
+                        # Type description
+                        if "cafe" in place_types:
+                            summary = "カフェ。"
+                        elif "bakery" in place_types:
+                            summary = "ベーカリー・パン屋。"
+                        else:
+                            summary = "レストラン。"
+
+                        # Add price info
+                        if price_level == 1:
+                            summary += "お手頃価格で気軽に利用できます。"
+                        elif price_level == 2:
+                            summary += "手頃な価格帯のレストランです。"
+
+                        # Add family-friendly note if review mentions it
+                        family_keywords = ["子ども", "子供", "こども", "キッズ", "家族", "ファミリー"]
+                        has_family_mention = any(
+                            any(kw in review.get("text", "") for kw in family_keywords)
+                            for review in raw_reviews[:3]
+                        )
+                        if has_family_mention:
+                            summary += "口コミで家族連れにおすすめと評判です。"
+
+                    restaurant["photo_url"] = photo_url
+                    restaurant["reviews"] = reviews
+                    restaurant["summary"] = summary
+
+                enriched_results.append(restaurant)
+
+                # Stop once we have enough results
+                if len(enriched_results) >= max_results:
+                    break
+
+            logger.info(f"Filtered to {len(enriched_results)} child-friendly restaurants")
+
+            return enriched_results
+
+        except (ApiError, HTTPError, Timeout, TransportError) as e:
+            logger.error(f"Child-friendly restaurant search error for ({lat}, {lng}): {e}")
+            raise GoogleMapsError(f"Failed to search child-friendly restaurants: {e}") from e
 
     # ========================================
     # Directions API Methods

@@ -63,7 +63,6 @@ JSON形式で返答してください:
     "unit": "minutes" または null
   }},
   "activity_type": "具体的な活動内容（例: 動物園、博物館、公園、アクティブ、インドア）または null",
-  "meals": ["lunch" または "dinner" のリスト、言及がなければ空配列],
   "child_age": "子供の年齢（例: 3, 0-3, 5-10）または null",
   "transportation": "car" または "public" または null,
   "destination": "目的地の名称（もし言及があれば）または null",
@@ -85,7 +84,6 @@ JSON形式で返答してください:
   "location": {{"address": "横浜駅", "explicit": true}},
   "travel_time": {{"value": 30, "direction": "one-way", "unit": "minutes"}},
   "activity_type": "動物園",
-  "meals": [],
   "child_age": "3",
   "transportation": "car",
   "destination": null,
@@ -98,7 +96,6 @@ JSON形式で返答してください:
   "location": {{"address": null, "explicit": false}},
   "travel_time": {{"value": null, "direction": null, "unit": null}},
   "activity_type": null,
-  "meals": [],
   "child_age": null,
   "transportation": null,
   "destination": null,
@@ -131,14 +128,12 @@ JSON形式で返答してください:
 - 出発地: {current_prefs.get('location', {}).get('address', '未設定')}
 - 移動時間: {current_prefs.get('travel_time', '未設定')}
 - アクティビティタイプ: {current_prefs.get('activity_type', '未設定')}
-- 食事: {current_prefs.get('meals', '未設定')}
 
 抽出してください：
 1. 出発地（駅名、住所、ランドマーク）
 2. 移動時間の希望（片道/往復、分/時間）
 3. アクティビティの種類（アクティブ/インドア/観光など）
-4. 食事の希望（昼食/夕食/なし）
-5. 子供の年齢（もし言及があれば）
+4. 子供の年齢（もし言及があれば）
 
 明確に言及されている情報のみを簡潔に回答してください。
 """
@@ -212,7 +207,6 @@ JSON形式で返答してください:
         location: str,
         travel_time: int,
         activity_type: str,
-        meals: list[str],
         child_age: str | None = None,
         transportation: str | None = None,
         latitude: float | None = None,
@@ -226,7 +220,6 @@ JSON形式で返答してください:
             location: Starting location
             travel_time: Maximum travel time in minutes (one-way)
             activity_type: Type of activities (active/indoor/sightseeing)
-            meals: List of meals (lunch/dinner)
             child_age: Age of children if provided
             transportation: Preferred transportation method
             latitude: Starting latitude for better grounding
@@ -235,8 +228,6 @@ JSON形式で返答してください:
         Returns:
             Formatted prompt for plan generation
         """
-        # Format meals
-        meal_text = "、".join(meals) if meals else "なし"
 
         # Format optional info
         optional_info = []
@@ -283,8 +274,7 @@ JSON形式で返答してください:
 ## 条件
 - 出発地: {location}{coords_info}
 - 移動時間: 片道 {travel_time} 分以内
-- アクティビティタイプ: {activity_type}
-- 食事: {meal_text}{optional_section}
+- アクティビティタイプ: {activity_type}{optional_section}
 
 ## 必須要件
 1. **実在する場所のみ提案**（Google Mapsで確認可能な施設）
@@ -314,8 +304,6 @@ JSON形式で返答してください:
 
 ### 3. [施設名]
 （同様の形式）
-
-{f"## 食事の提案\n各場所の近くで{meal_text}ができるお店も簡潔に紹介してください。" if meals else ""}
 
 ## 注意事項
 - 実際の施設名、住所、アクセス情報を正確に記載
@@ -429,7 +417,6 @@ def build_plan_generation_prompt(
         location=location_data.get("address", "東京駅"),
         travel_time=travel_time_data.get("value", 60) if travel_time_data else 60,
         activity_type=preferences.get("activity_type", "アクティブ"),
-        meals=preferences.get("meals", []),
         child_age=preferences.get("child_age"),
         transportation=preferences.get("transportation"),
         latitude=location_data.get("lat"),

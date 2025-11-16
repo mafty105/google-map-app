@@ -14,7 +14,6 @@ interface MapDisplayProps {
   center?: Location;
   markers?: Location[];
   routes?: Location[][];
-  directionsResult?: google.maps.DirectionsResult | null;
   zoom?: number;
   onMarkerClick?: (index: number) => void; // Callback when marker is clicked
 }
@@ -30,15 +29,13 @@ export default function MapDisplay({
   center,
   markers = [],
   routes = [],
-  directionsResult = null,
   zoom = 15,
   onMarkerClick,
 }: MapDisplayProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapMarkers, setMapMarkers] = useState<google.maps.Marker[]>([]);
-  const [directionsRenderer, setDirectionsRenderer] =
-    useState<google.maps.DirectionsRenderer | null>(null);
+  const [polylines, setPolylines] = useState<google.maps.Polyline[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
 
@@ -102,18 +99,6 @@ export default function MapDisplay({
           });
 
           setMap(newMap);
-
-          // Initialize directions renderer
-          const renderer = new google.maps.DirectionsRenderer({
-            map: newMap,
-            suppressMarkers: false,
-            polylineOptions: {
-              strokeColor: '#1d4ed8', // blue-700
-              strokeWeight: 4,
-              strokeOpacity: 0.8,
-            },
-          });
-          setDirectionsRenderer(renderer);
         }
       })
       .catch((err) => {
@@ -202,51 +187,45 @@ export default function MapDisplay({
     }
   }, [map, markers]);
 
-  // Update routes when prop changes
+  // Update routes when prop changes - draw polylines without DirectionsService
   useEffect(() => {
-    if (!map || !directionsRenderer || routes.length === 0) return;
+    if (!map) return;
 
-    // For now, show only the first route
-    // TODO: Support multiple routes with different colors
-    const route = routes[0];
-    if (!route || route.length < 2) return;
+    // Clear existing polylines
+    polylines.forEach((polyline) => polyline.setMap(null));
 
-    const directionsService = new google.maps.DirectionsService();
-
-    const waypoints = route.slice(1, -1).map((location) => ({
-      location: { lat: location.lat, lng: location.lng },
-      stopover: true,
-    }));
-
-    directionsService.route(
-      {
-        origin: { lat: route[0].lat, lng: route[0].lng },
-        destination: { lat: route[route.length - 1].lat, lng: route[route.length - 1].lng },
-        waypoints: waypoints,
-        travelMode: google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK && result) {
-          directionsRenderer.setDirections(result);
-        } else {
-          console.error('Directions request failed:', status);
-        }
-      }
-    );
-  }, [map, directionsRenderer, routes]);
-
-  // Update directions when directionsResult prop changes (for navigation feature)
-  useEffect(() => {
-    if (!directionsRenderer) return;
-
-    if (directionsResult) {
-      // Show the directions result from navigation
-      directionsRenderer.setDirections(directionsResult);
-    } else {
-      // Clear directions when null (drawer closed or no navigation active)
-      directionsRenderer.setDirections({ routes: [] } as google.maps.DirectionsResult);
+    if (routes.length === 0) {
+      setPolylines([]);
+      return;
     }
-  }, [directionsRenderer, directionsResult]);
+
+    // Draw polylines for each route
+    const newPolylines: google.maps.Polyline[] = [];
+
+    routes.forEach((route) => {
+      if (!route || route.length < 2) return;
+
+      // Create path from route locations
+      const path = route.map((location) => ({
+        lat: location.lat,
+        lng: location.lng,
+      }));
+
+      // Create polyline
+      const polyline = new google.maps.Polyline({
+        path: path,
+        geodesic: true,
+        strokeColor: '#1d4ed8', // blue-700
+        strokeOpacity: 0.8,
+        strokeWeight: 4,
+        map: map,
+      });
+
+      newPolylines.push(polyline);
+    });
+
+    setPolylines(newPolylines);
+  }, [map, routes]);
 
   if (error) {
     return (

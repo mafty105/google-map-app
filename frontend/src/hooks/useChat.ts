@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { chatAPI, type ChatResponse, type EnrichedPlace } from '../services/api';
+import { chatAPI, type ChatResponse, type EnrichedPlace, type RouteInfo } from '../services/api';
 
 export interface Message {
   text: string;
@@ -18,6 +18,8 @@ export function useChat(sessionId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<unknown | null>(null);
   const [enrichedPlaces, setEnrichedPlaces] = useState<EnrichedPlace[]>([]);
+  const [routes, setRoutes] = useState<RouteInfo[]>([]);
+  const [originLocation, setOriginLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
 
   /**
    * Send a message to the backend
@@ -74,6 +76,16 @@ export function useChat(sessionId: string | null) {
           setEnrichedPlaces((prev) => [...prev, ...(response.enriched_places || [])]);
         }
 
+        // Update routes if provided
+        if (response.routes && response.routes.length > 0) {
+          setRoutes(response.routes);
+        }
+
+        // Update origin location if provided
+        if (response.origin_location) {
+          setOriginLocation(response.origin_location);
+        }
+
         return response;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to send message';
@@ -94,6 +106,8 @@ export function useChat(sessionId: string | null) {
     setQuickReplies([]);
     setCurrentPlan(null);
     setEnrichedPlaces([]);
+    setRoutes([]);
+    setOriginLocation(null);
     setError(null);
   }, []);
 
@@ -117,6 +131,8 @@ export function useChat(sessionId: string | null) {
     error,
     currentPlan,
     enrichedPlaces,
+    routes,
+    originLocation,
     sendMessage,
     clearMessages,
     addGreeting,

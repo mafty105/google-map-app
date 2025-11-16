@@ -40,6 +40,28 @@ export interface EnrichedPlace {
   llm_description?: string;
 }
 
+export interface RouteInfo {
+  summary: string;
+  distance: {
+    text: string;
+    value: number;
+  };
+  duration: {
+    text: string;
+    value: number;
+  };
+  start_address: string;
+  end_address: string;
+  steps: Array<{
+    html_instructions: string;
+    distance: { text: string; value: number };
+    duration: { text: string; value: number };
+    start_location: { lat: number; lng: number };
+    end_location: { lat: number; lng: number };
+    polyline?: { points: string };
+  }>;
+}
+
 export interface ChatResponse {
   session_id: string;
   response: string;
@@ -47,6 +69,12 @@ export interface ChatResponse {
   quick_replies?: string[];
   plan?: unknown; // TravelPlan type from backend
   enriched_places?: EnrichedPlace[];
+  routes?: RouteInfo[];
+  origin_location?: {
+    lat: number;
+    lng: number;
+    address?: string;
+  };
 }
 
 export interface SessionHistoryResponse {
@@ -157,6 +185,28 @@ export const chatAPI = {
     sessionId: string,
   ): Promise<SessionHistoryResponse> => {
     return fetchAPI<SessionHistoryResponse>(`/api/chat/session/${sessionId}`);
+  },
+
+  /**
+   * Get navigation route from origin to destination
+   */
+  getNavigationRoute: async (
+    originLat: number,
+    originLng: number,
+    destLat: number,
+    destLng: number,
+    mode: string = 'transit',
+  ): Promise<RouteInfo> => {
+    return fetchAPI<RouteInfo>('/api/chat/navigate', {
+      method: 'POST',
+      body: JSON.stringify({
+        origin_lat: originLat,
+        origin_lng: originLng,
+        dest_lat: destLat,
+        dest_lng: destLng,
+        mode,
+      }),
+    });
   },
 };
 

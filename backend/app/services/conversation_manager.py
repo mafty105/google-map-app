@@ -161,9 +161,6 @@ class ConversationManager:
         if not prefs.activity_type:
             return "アクティブな場所をお探しですか、それともインドアの施設がよいですか?"
 
-        if not prefs.meals:
-            return "昼食や夕食はお取りになりますか?"
-
         # All basic preferences collected
         return None
 

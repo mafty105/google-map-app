@@ -34,6 +34,7 @@ export default function ChatContainer() {
     error: chatError,
     currentPlan,
     enrichedPlaces,
+    routes,
     sendMessage,
     addGreeting,
   } = useChat(sessionId);
@@ -94,8 +95,15 @@ export default function ChatContainer() {
         }));
 
       setMapMarkers(markers);
+
+      // Create routes from markers for map display
+      // This creates a single route through all places
+      if (markers.length > 1) {
+        setMapRoutes([markers]);
+      }
     } else {
       setMapMarkers([]); // Clear markers when list is cleared
+      setMapRoutes([]); // Clear routes as well
     }
   }, [enrichedPlaces]);
 

@@ -40,6 +40,25 @@ export interface EnrichedPlace {
   llm_description?: string;
 }
 
+export interface RouteInfo {
+  summary: string;
+  distance: {
+    text: string;
+    value: number;
+  };
+  duration: {
+    text: string;
+    value: number;
+  };
+  start_address: string;
+  end_address: string;
+  steps: Array<{
+    html_instructions: string;
+    distance: { text: string; value: number };
+    duration: { text: string; value: number };
+  }>;
+}
+
 export interface ChatResponse {
   session_id: string;
   response: string;
@@ -47,6 +66,7 @@ export interface ChatResponse {
   quick_replies?: string[];
   plan?: unknown; // TravelPlan type from backend
   enriched_places?: EnrichedPlace[];
+  routes?: RouteInfo[];
 }
 
 export interface SessionHistoryResponse {

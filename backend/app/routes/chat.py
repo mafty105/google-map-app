@@ -220,7 +220,7 @@ async def send_message(request: ChatMessageRequest) -> ChatMessageResponse:
     conversation_manager.add_user_message(request.session_id, request.message)
 
     # Determine response based on current state
-    response_message, quick_replies, enriched_places = _generate_response(session, request.message)
+    response_message, quick_replies, enriched_places, routes = _generate_response(session, request.message)
 
     # Add assistant response
     conversation_manager.add_assistant_message(request.session_id, response_message)
@@ -231,9 +231,73 @@ async def send_message(request: ChatMessageRequest) -> ChatMessageResponse:
         session_id=request.session_id,
         response=response_message,
         enriched_places=enriched_places,
+        routes=routes,
         state=session.state.value,
         quick_replies=quick_replies
     )
+
+
+def _calculate_routes(
+    origin_lat: float,
+    origin_lng: float,
+    enriched_places: list[dict],
+    transportation: str | None = None
+) -> list[dict]:
+    """Calculate routes between origin and places.
+
+    Args:
+        origin_lat: Starting point latitude
+        origin_lng: Starting point longitude
+        enriched_places: List of enriched place dictionaries with location info
+        transportation: Transportation mode ("車" or other for transit)
+
+    Returns:
+        List of route dictionaries with distance, duration, and steps
+    """
+    routes = []
+
+    if not enriched_places or len(enriched_places) == 0:
+        return routes
+
+    # Determine travel mode
+    mode = "driving" if transportation == "車" else "transit"
+    logger.info(f"Calculating routes with mode={mode} for {len(enriched_places)} places")
+
+    try:
+        # Route from origin to first place
+        first_place = enriched_places[0]
+        if first_place.get("location"):
+            route_result = google_maps_service.get_directions(
+                origin=(origin_lat, origin_lng),
+                destination=(first_place["location"]["lat"], first_place["location"]["lng"]),
+                mode=mode
+            )
+            if route_result and len(route_result) > 0:
+                routes.append(route_result[0])
+                logger.debug(f"Added route: origin -> {first_place.get('name')}")
+
+        # Routes between consecutive places
+        for i in range(len(enriched_places) - 1):
+            current_place = enriched_places[i]
+            next_place = enriched_places[i + 1]
+
+            if current_place.get("location") and next_place.get("location"):
+                route_result = google_maps_service.get_directions(
+                    origin=(current_place["location"]["lat"], current_place["location"]["lng"]),
+                    destination=(next_place["location"]["lat"], next_place["location"]["lng"]),
+                    mode=mode
+                )
+                if route_result and len(route_result) > 0:
+                    routes.append(route_result[0])
+                    logger.debug(f"Added route: {current_place.get('name')} -> {next_place.get('name')}")
+
+        logger.info(f"Calculated {len(routes)} routes successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to calculate routes: {e}", exc_info=True)
+        # Return empty list on error - routes are optional
+
+    return routes
 
 
 @router.get("/session/{session_id}", response_model=SessionHistoryResponse)
@@ -267,11 +331,11 @@ async def get_session_history(session_id: str) -> SessionHistoryResponse:
     )
 
 
-def _generate_response(session, user_message: str) -> tuple[str, list[str] | None, list[dict] | None]:
+def _generate_response(session, user_message: str) -> tuple[str, list[str] | None, list[dict] | None, list[dict] | None]:
     """Generate response based on conversation state and user input.
 
     Returns:
-        Tuple of (response_message, quick_replies, enriched_places)
+        Tuple of (response_message, quick_replies, enriched_places, routes)
     """
 
     logger.info(f"_generate_response called: state={session.state}, message='{user_message[:50]}'")
@@ -387,7 +451,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     quick_replies = []
 
                 logger.info(f"INITIAL state: asking for {priority_item}")
-                return (question, quick_replies, None)
+                return (question, quick_replies, None, None)
             else:
                 # All required info collected - generate plan
                 logger.info("INITIAL state: all info collected, generating plan")
@@ -530,7 +594,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         session = conversation_manager.get_session(session.session_id)
         if not session:
             logger.error("Session not found after keyword matching")
-            return ("セッションが見つかりません。もう一度お試しください。", [], None)
+            return ("セッションが見つかりません。もう一度お試しください。", [], None, None)
 
         # Check if we have enough to generate after keyword matching
         if conversation_manager.has_sufficient_preferences(session):
@@ -546,27 +610,27 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     question = "天候も考慮して、室内と屋外どちらがよいですか？"
                     quick_replies = ["屋外（公園・遊び場など）", "室内（博物館・科学館など）", "どちらでもよい"]
                     logger.info(f"Asking for: {priority_item}")
-                    return (question, quick_replies, None)
+                    return (question, quick_replies, None, None)
                 elif priority_item == "transportation":
                     question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
                     quick_replies = ["車", "電車・バス"]
                     logger.info(f"Asking for: {priority_item}")
-                    return (question, quick_replies, None)
+                    return (question, quick_replies, None, None)
                 elif priority_item == "child_age":
                     question = "お子様は何歳ですか？"
                     quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
                     logger.info(f"Asking for: {priority_item}")
-                    return (question, quick_replies, None)
+                    return (question, quick_replies, None, None)
                 elif priority_item == "meals":
                     question = "昼食や夕食はお取りになりますか？"
                     quick_replies = ["昼食", "夕食", "両方", "食事なし"]
                     logger.info(f"Asking for: {priority_item}")
-                    return (question, quick_replies, None)
+                    return (question, quick_replies, None, None)
                 elif priority_item == "location":
                     question = "どこから出発されますか？"
                     quick_replies = []
                     logger.info(f"Asking for: {priority_item}")
-                    return (question, quick_replies, None)
+                    return (question, quick_replies, None, None)
                 else:
                     # Shouldn't happen
                     logger.warning(f"Unexpected missing item: {priority_item}")
@@ -639,7 +703,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 session = conversation_manager.get_session(session.session_id)
                 if not session:
                     logger.error("Session not found after AI extraction")
-                    return ("セッションが見つかりません。もう一度お試しください。", [], None)
+                    return ("セッションが見つかりません。もう一度お試しください。", [], None, None)
 
                 # Check if we have enough to generate
                 if conversation_manager.has_sufficient_preferences(session):
@@ -654,27 +718,27 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                             question = "天候も考慮して、室内と屋外どちらがよいですか？"
                             quick_replies = ["屋外（公園・遊び場など）", "室内（博物館・科学館など）", "どちらでもよい"]
                             logger.info(f"Asking after AI extraction: {priority_item}")
-                            return (question, quick_replies, None)
+                            return (question, quick_replies, None, None)
                         elif priority_item == "transportation":
                             question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
                             quick_replies = ["車", "電車・バス"]
                             logger.info(f"Asking after AI extraction: {priority_item}")
-                            return (question, quick_replies, None)
+                            return (question, quick_replies, None, None)
                         elif priority_item == "child_age":
                             question = "お子様は何歳ですか？"
                             quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
                             logger.info(f"Asking after AI extraction: {priority_item}")
-                            return (question, quick_replies, None)
+                            return (question, quick_replies, None, None)
                         elif priority_item == "meals":
                             question = "昼食や夕食はお取りになりますか？"
                             quick_replies = ["昼食", "夕食", "両方", "食事なし"]
                             logger.info(f"Asking after AI extraction: {priority_item}")
-                            return (question, quick_replies, None)
+                            return (question, quick_replies, None, None)
                         elif priority_item == "location":
                             question = "どこから出発されますか？"
                             quick_replies = []
                             logger.info(f"Asking after AI extraction: {priority_item}")
-                            return (question, quick_replies, None)
+                            return (question, quick_replies, None, None)
                         else:
                             # Shouldn't happen
                             logger.warning(f"Unexpected missing item after AI extraction: {priority_item}")
@@ -700,13 +764,14 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 return (
                     "すみません、もう一度教えていただけますか？",
                     [],
+                    None,
                     None
                 )
         else:
             # Keyword matching provided enough info and we already returned above
             # This should not be reached
             logger.warning("Unexpected code path in FREE_INPUT handler")
-            return ("もう少し詳しく教えていただけますか？", [], None)
+            return ("もう少し詳しく教えていただけますか？", [], None, None)
 
     elif session.state == ConversationState.GENERATING_PLAN:
         """Generate travel plan with current preferences."""
@@ -721,7 +786,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 session.session_id,
                 ConversationState.FREE_INPUT
             )
-            return ("出発地を教えてください。", [], None)
+            return ("出発地を教えてください。", [], None, None)
 
         # Set default activity_type if not specified
         if not prefs.activity_type:
@@ -768,6 +833,15 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
 
             logger.info(f"Enriched {len(enriched_places)} places with photos")
 
+            # Calculate routes between origin and places
+            routes = _calculate_routes(
+                origin_lat=prefs_dict["location"]["lat"],
+                origin_lng=prefs_dict["location"]["lng"],
+                enriched_places=enriched_places,
+                transportation=prefs_dict.get("transportation")
+            )
+            logger.info(f"Calculated {len(routes)} routes")
+
             # Store shown place IDs
             place_ids = [place["place_id"] for place in enriched_places]
             conversation_manager.update_preferences(
@@ -784,7 +858,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             prefs = conversation_manager.get_session(session.session_id).user_preferences
             quick_replies = ["他の候補を見る"] if prefs.spots_request_count < 2 else None
 
-            return (plan_description, quick_replies, enriched_places)
+            return (plan_description, quick_replies, enriched_places, routes)
 
         except Exception as e:
             logger.error(f"Failed to generate plan: {e}", exc_info=True)
@@ -804,7 +878,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             else:
                 error_msg += "もう一度お試しいただくか、条件を変更してみてください。"
 
-            return (error_msg, None, None)
+            return (error_msg, None, None, None)
 
     elif session.state == ConversationState.GATHERING_PREFERENCES:
         # Check what preference to ask for next
@@ -960,13 +1034,14 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 else:
                     error_msg += "もう一度お試しいただくか、条件を変更してみてください。"
 
-                return (error_msg, None, None)
+                return (error_msg, None, None, None)
 
         # Ask questions in order based on what's missing
         if prefs.activity_type and prefs.meals is None:
             return (
                 "昼食や夕食はお取りになりますか?",
                 ["とる", "とらない"],
+                None,
                 None
             )
 
@@ -974,6 +1049,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             return (
                 "お子様の年齢を教えてください。",
                 ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"],
+                None,
                 None
             )
 
@@ -981,6 +1057,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             return (
                 "移動時間はどのくらいを想定していますか？（例: 30分、60分）",
                 ["30分", "60分", "90分"],
+                None,
                 None
             )
 
@@ -988,10 +1065,11 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             return (
                 "車はお持ちですか？",
                 ["車あり", "車なし（公共交通機関）"],
+                None,
                 None
             )
 
-        return ("ご質問に答えていただきありがとうございます。", None, None)
+        return ("ご質問に答えていただきありがとうございます。", None, None, None)
 
     elif session.state == ConversationState.PRESENTING_PLAN:
         prefs = session.user_preferences
@@ -1015,7 +1093,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         if "別のプラン" in user_message or "他の提案" in user_message or "他の候補" in user_message:
             # Check if we've reached the limit (2 additional requests = 9 total spots)
             if prefs.spots_request_count >= 2:
-                return ("申し訳ございませんが、これ以上の候補はご用意できません。表示されているスポットからお選びください。", None, None)
+                return ("申し訳ございませんが、これ以上の候補はご用意できません。表示されているスポットからお選びください。", None, None, None)
 
             try:
                 # Convert preferences to dict for prompt template
@@ -1057,6 +1135,15 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
 
                 logger.info(f"Enriched {len(enriched_places)} additional places")
 
+                # Calculate routes between origin and places
+                routes = _calculate_routes(
+                    origin_lat=prefs_dict["location"]["lat"],
+                    origin_lng=prefs_dict["location"]["lng"],
+                    enriched_places=enriched_places,
+                    transportation=prefs_dict.get("transportation")
+                )
+                logger.info(f"Calculated {len(routes)} routes for additional places")
+
                 # Add new place IDs to shown list
                 new_place_ids = [place["place_id"] for place in enriched_places]
                 updated_place_ids = prefs.shown_place_ids + new_place_ids
@@ -1074,15 +1161,15 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 # Add Quick Reply if we haven't reached the limit
                 quick_replies = ["他の候補を見る"] if prefs.spots_request_count < 2 else None
 
-                return (plan_description, quick_replies, enriched_places)
+                return (plan_description, quick_replies, enriched_places, routes)
 
             except Exception as e:
                 logger.error(f"Failed to generate additional spots: {e}", exc_info=True)
-                return ("申し訳ございません。追加のスポット生成中に問題が発生しました。もう一度お試しください。", None, None)
+                return ("申し訳ございません。追加のスポット生成中に問題が発生しました。もう一度お試しください。", None, None, None)
 
         # Default response for other messages in PRESENTING_PLAN state
-        return ("プランについてのご質問やご要望があればお聞かせください。", None, None)
+        return ("プランについてのご質問やご要望があればお聞かせください。", None, None, None)
 
     else:
         # Default response for other states
-        return ("ご質問ありがとうございます。", None, None)
+        return ("ご質問ありがとうございます。", None, None, None)

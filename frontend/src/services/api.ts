@@ -70,6 +70,11 @@ export interface ChatResponse {
   plan?: unknown; // TravelPlan type from backend
   enriched_places?: EnrichedPlace[];
   routes?: RouteInfo[];
+  origin_location?: {
+    lat: number;
+    lng: number;
+    address?: string;
+  };
 }
 
 export interface SessionHistoryResponse {

@@ -12,8 +12,6 @@ import { mockPlan } from '../data/mockPlan';
 import { useSession } from '../hooks/useSession';
 import { useChat } from '../hooks/useChat';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { useMobileDetection } from '../hooks/useMobileDetection';
-import { chatAPI } from '../services/api';
 
 interface Location {
   lat: number;
@@ -36,6 +34,7 @@ export default function ChatContainer() {
     currentPlan,
     enrichedPlaces,
     routes,
+    originLocation,
     sendMessage,
     addGreeting,
   } = useChat(sessionId);
@@ -49,7 +48,6 @@ export default function ChatContainer() {
   });
   const [mapMarkers, setMapMarkers] = useState<Location[]>([]);
   const [mapRoutes, setMapRoutes] = useState<Location[][]>([]);
-  const [savedPlanRoutes, setSavedPlanRoutes] = useState<Location[][]>([]); // Store plan routes when showing navigation
 
   // Drawer state
   const [selectedPlaceIndex, setSelectedPlaceIndex] = useState<number | null>(null);
@@ -57,11 +55,8 @@ export default function ChatContainer() {
   // Age selector state
   const [showAgeSelector, setShowAgeSelector] = useState(false);
 
-  // Navigation state
-  const { location: userLocation, loading: geoLoading, error: geoError, requestLocation, clearError: clearGeoError } = useGeolocation();
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationError, setNavigationError] = useState<string | null>(null);
-  const isMobile = useMobileDetection();
+  // Geolocation for navigation
+  const { location: userLocation, requestLocation } = useGeolocation();
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -188,92 +183,23 @@ export default function ChatContainer() {
 
   const handleCloseDrawer = () => {
     setSelectedPlaceIndex(null);
-    setNavigationError(null);
-
-    // Restore plan routes when drawer closes
-    if (savedPlanRoutes.length > 0) {
-      setMapRoutes(savedPlanRoutes);
-      setSavedPlanRoutes([]);
-    }
   };
 
-  const handleNavigate = async (placeId: string, placeName: string, lat: number, lng: number) => {
-    setNavigationError(null);
+  const handleNavigate = (placeId: string, placeName: string, lat: number, lng: number) => {
+    // Build Google Maps URL with route from origin to destination
+    let mapsUrl: string;
 
-    // Mobile: Open Google Maps app with deep link
-    if (isMobile) {
-      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${placeId}`;
-      window.open(mapsUrl, '_blank');
-      return;
+    if (originLocation) {
+      // Use the origin from conversation (user's starting point)
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originLocation.lat},${originLocation.lng}&destination=${lat},${lng}&destination_place_id=${placeId}`;
+    } else {
+      // Fallback: just show destination if no origin is set
+      mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${placeId}`;
     }
 
-    // Desktop: Get route from backend and display with polyline
-    setIsNavigating(true);
-
-    // Request user location if not already available
-    if (!userLocation) {
-      requestLocation();
-    }
-
-    // Wait for geolocation to complete
-    if (geoLoading) {
-      return; // Geolocation is already in progress
-    }
-
-    if (geoError) {
-      setNavigationError(geoError);
-      setIsNavigating(false);
-      return;
-    }
-
-    // Use geolocation result or wait for it
-    if (!userLocation) {
-      // Location request is pending, the effect below will handle it
-      return;
-    }
-
-    // Get navigation route from backend
-    try {
-      const routeData = await chatAPI.getNavigationRoute(
-        userLocation.lat,
-        userLocation.lng,
-        lat,
-        lng,
-        'transit', // Default to transit, can be made dynamic later
-      );
-
-      // Convert route steps to polyline coordinates
-      const routePath: Array<{ lat: number; lng: number }> = [];
-      routeData.steps.forEach((step) => {
-        routePath.push(step.start_location);
-      });
-      // Add the last end_location
-      if (routeData.steps.length > 0) {
-        routePath.push(routeData.steps[routeData.steps.length - 1].end_location);
-      }
-
-      // Save current plan routes before replacing with navigation route
-      if (mapRoutes.length > 0 && savedPlanRoutes.length === 0) {
-        setSavedPlanRoutes(mapRoutes);
-      }
-
-      // Set navigation route (this will replace plan routes temporarily)
-      setMapRoutes([routePath]);
-      setIsNavigating(false);
-    } catch (error) {
-      console.error('Navigation error:', error);
-      setNavigationError('ルートの検索に失敗しました。もう一度お試しください。');
-      setIsNavigating(false);
-    }
+    // Open Google Maps in new tab
+    window.open(mapsUrl, '_blank');
   };
-
-  // Effect to handle geolocation completion for desktop navigation
-  useEffect(() => {
-    if (!isMobile && isNavigating && userLocation && !navigationError) {
-      // Retry navigation now that we have user location
-      // This will happen automatically when userLocation updates
-    }
-  }, [userLocation, isMobile, isNavigating, navigationError]);
 
   const handlePreviousPlace = () => {
     if (selectedPlaceIndex !== null && selectedPlaceIndex > 0) {
@@ -475,12 +401,12 @@ export default function ChatContainer() {
           isOpen={selectedPlaceIndex !== null}
           onClose={handleCloseDrawer}
           onNavigate={handleNavigate}
-          navigating={isNavigating}
-          navigationError={navigationError}
           onPrevious={handlePreviousPlace}
           onNext={handleNextPlace}
           hasPrevious={selectedPlaceIndex > 0}
           hasNext={selectedPlaceIndex < enrichedPlaces.length - 1}
+          childAge={5}
+          originLocation={originLocation}
         />
       )}
 

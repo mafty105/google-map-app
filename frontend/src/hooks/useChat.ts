@@ -19,6 +19,7 @@ export function useChat(sessionId: string | null) {
   const [currentPlan, setCurrentPlan] = useState<unknown | null>(null);
   const [enrichedPlaces, setEnrichedPlaces] = useState<EnrichedPlace[]>([]);
   const [routes, setRoutes] = useState<RouteInfo[]>([]);
+  const [originLocation, setOriginLocation] = useState<{ lat: number; lng: number; address?: string } | null>(null);
 
   /**
    * Send a message to the backend
@@ -80,6 +81,11 @@ export function useChat(sessionId: string | null) {
           setRoutes(response.routes);
         }
 
+        // Update origin location if provided
+        if (response.origin_location) {
+          setOriginLocation(response.origin_location);
+        }
+
         return response;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to send message';
@@ -101,6 +107,7 @@ export function useChat(sessionId: string | null) {
     setCurrentPlan(null);
     setEnrichedPlaces([]);
     setRoutes([]);
+    setOriginLocation(null);
     setError(null);
   }, []);
 
@@ -125,6 +132,7 @@ export function useChat(sessionId: string | null) {
     currentPlan,
     enrichedPlaces,
     routes,
+    originLocation,
     sendMessage,
     clearMessages,
     addGreeting,

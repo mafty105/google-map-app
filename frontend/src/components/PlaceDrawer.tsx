@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { EnrichedPlace } from '../services/api';
+import CompactRestaurantCard from './CompactRestaurantCard';
 
 interface PlaceDrawerProps {
   place: EnrichedPlace;
   isOpen: boolean;
   onClose: () => void;
   onNavigate?: (placeId: string, placeName: string, lat: number, lng: number) => void;
-  navigating?: boolean;
-  navigationError?: string | null;
   onPrevious?: () => void;
   onNext?: () => void;
   hasPrevious?: boolean;
   hasNext?: boolean;
+  childAge?: number | null;
+  originLocation?: { lat: number; lng: number; address?: string } | null;
 }
 
 /**
@@ -23,15 +24,21 @@ export default function PlaceDrawer({
   isOpen,
   onClose,
   onNavigate,
-  navigating = false,
-  navigationError = null,
   onPrevious,
   onNext,
   hasPrevious = false,
   hasNext = false,
+  childAge = null,
+  originLocation = null,
 }: PlaceDrawerProps) {
   // Mounting state for animation
   const [isMounted, setIsMounted] = useState(false);
+
+  // Nearby restaurants state
+  const [showRestaurants, setShowRestaurants] = useState(false);
+  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [isLoadingRestaurants, setIsLoadingRestaurants] = useState(false);
+  const [restaurantError, setRestaurantError] = useState<string | null>(null);
 
   // Handle mounting/unmounting for animation
   useEffect(() => {
@@ -73,6 +80,49 @@ export default function PlaceDrawer({
       document.body.style.overflow = '';
     };
   }, [isOpen]);
+
+  // Reset restaurant state when drawer closes OR when place changes
+  useEffect(() => {
+    if (!isOpen) {
+      setShowRestaurants(false);
+      setRestaurants([]);
+      setRestaurantError(null);
+    }
+  }, [isOpen]);
+
+  // Reset restaurant state when place changes
+  useEffect(() => {
+    setShowRestaurants(false);
+    setRestaurants([]);
+    setRestaurantError(null);
+  }, [place.place_id]);
+
+  // Function to load nearby restaurants
+  const handleLoadRestaurants = async () => {
+    setIsLoadingRestaurants(true);
+    setRestaurantError(null);
+
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+      const childAgeParam = childAge !== null ? `&child_age=${childAge}` : '';
+      const response = await fetch(
+        `${backendUrl}/api/places/nearby-restaurants?place_id=${place.place_id}&radius=1000&max_results=3${childAgeParam}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch restaurants');
+      }
+
+      const data = await response.json();
+      setRestaurants(data.restaurants || []);
+      setShowRestaurants(true);
+    } catch (error) {
+      console.error('Error loading restaurants:', error);
+      setRestaurantError('飲食店の読み込みに失敗しました');
+    } finally {
+      setIsLoadingRestaurants(false);
+    }
+  };
 
   // Don't render if not open (keep in DOM during closing animation)
   if (!isOpen && !isMounted) return null;
@@ -270,34 +320,14 @@ export default function PlaceDrawer({
               {onNavigate && (
                 <button
                   onClick={() => onNavigate(place.place_id, place.name, place.location.lat, place.location.lng)}
-                  disabled={navigating}
-                  className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
                   aria-label="ここへ行く"
                 >
-                  {navigating ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>ルートを検索中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                      </svg>
-                      <span>ここへ行く</span>
-                    </>
-                  )}
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  <span>ここへ行く</span>
                 </button>
-              )}
-
-              {/* Navigation Error Message */}
-              {navigationError && (
-                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-700">{navigationError}</p>
-                </div>
               )}
 
               {/* Row 2: Secondary Buttons */}
@@ -380,6 +410,54 @@ export default function PlaceDrawer({
                 </div>
               </div>
             )}
+
+            {/* Nearby Restaurants Section */}
+            <div className="border-t border-gray-200 pt-6">
+              {!showRestaurants ? (
+                <button
+                  onClick={handleLoadRestaurants}
+                  disabled={isLoadingRestaurants}
+                  className="w-full px-4 py-2.5 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  {isLoadingRestaurants ? '読み込み中...' : '周辺の子ども向け飲食店を見る'}
+                </button>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-gray-800">
+                      周辺の子ども向け飲食店 ({restaurants.length}件)
+                    </h3>
+                    <button
+                      onClick={() => setShowRestaurants(false)}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      閉じる
+                    </button>
+                  </div>
+
+                  {restaurantError ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-700">{restaurantError}</p>
+                    </div>
+                  ) : restaurants.length > 0 ? (
+                    <div className="space-y-2">
+                      {restaurants.map((restaurant) => (
+                        <CompactRestaurantCard key={restaurant.place_id} restaurant={restaurant} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <p className="text-sm text-gray-600 text-center">
+                        周辺に子ども向け飲食店が見つかりませんでした
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

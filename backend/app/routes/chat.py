@@ -228,11 +228,22 @@ async def send_message(request: ChatMessageRequest) -> ChatMessageResponse:
 
     logger.info(f"Session {request.session_id}: Processed message in state {session.state}")
 
+    # Get origin location from preferences
+    origin_location = None
+    if session.user_preferences and session.user_preferences.location:
+        location_dict = _convert_location_to_dict(session.user_preferences.location)
+        origin_location = {
+            "lat": location_dict["lat"],
+            "lng": location_dict["lng"],
+            "address": location_dict.get("address")
+        }
+
     return ChatMessageResponse(
         session_id=request.session_id,
         response=response_message,
         enriched_places=enriched_places,
         routes=routes,
+        origin_location=origin_location,
         state=session.state.value,
         quick_replies=quick_replies
     )
@@ -299,49 +310,6 @@ def _calculate_routes(
         # Return empty list on error - routes are optional
 
     return routes
-
-
-class NavigationRequest(BaseModel):
-    """Request body for navigation route."""
-
-    origin_lat: float
-    origin_lng: float
-    dest_lat: float
-    dest_lng: float
-    mode: str = "transit"
-
-
-@router.post("/navigate")
-async def get_navigation_route(request: NavigationRequest):
-    """Get navigation route from origin to destination.
-
-    Args:
-        request: Navigation request with origin/destination coordinates and mode
-
-    Returns:
-        Route information with steps
-    """
-    try:
-        routes = google_maps_service.get_directions(
-            origin=(request.origin_lat, request.origin_lng),
-            destination=(request.dest_lat, request.dest_lng),
-            mode=request.mode
-        )
-
-        if not routes or len(routes) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No route found"
-            )
-
-        return routes[0]  # Return first route
-
-    except Exception as e:
-        logger.error(f"Navigation route error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get navigation route: {str(e)}"
-        )
 
 
 @router.get("/session/{session_id}", response_model=SessionHistoryResponse)
@@ -840,6 +808,25 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 activity_type="家族向け"
             )
             prefs = conversation_manager.get_session(session.session_id).user_preferences
+
+        # Geocode location if lat/lng not available
+        if prefs.location and (not prefs.location.lat or not prefs.location.lng):
+            logger.info(f"Geocoding location: {prefs.location.address}")
+            try:
+                geocode_result = google_maps_service.geocode_address(prefs.location.address)
+                if geocode_result:
+                    conversation_manager.update_preferences(
+                        session.session_id,
+                        location=Location(
+                            address=geocode_result["formatted_address"],
+                            lat=geocode_result["lat"],
+                            lng=geocode_result["lng"]
+                        )
+                    )
+                    prefs = conversation_manager.get_session(session.session_id).user_preferences
+                    logger.info(f"Geocoded to: ({geocode_result['lat']}, {geocode_result['lng']})")
+            except Exception as e:
+                logger.warning(f"Failed to geocode location: {e}")
 
         try:
             # Convert preferences to dict for prompt template

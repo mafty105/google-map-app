@@ -108,13 +108,16 @@ class ConversationManager:
 
     def get_critical_missing_info(self, session: ConversationSession) -> list[str]:
         """
-        Get list of critical missing information needed for plan generation.
+        Get list of missing information needed for high-quality plan generation.
 
-        Priority order:
-        1. child_age - if activity type suggests children
-        2. transportation - affects accessibility
-        3. travel_time - affects range
-        4. location - if not provided
+        We ask for detailed information to improve plan accuracy:
+        1. location - where to start from
+        2. activity_type - indoor vs outdoor (公園/室内施設)
+        3. transportation - car vs public transit (affects accessibility)
+        4. child_age - affects venue recommendations
+        5. meals - whether to include restaurants
+
+        Priority order ensures we ask the most impactful questions first.
 
         Returns:
             List of missing info keys in priority order
@@ -122,24 +125,25 @@ class ConversationManager:
         prefs = session.user_preferences
         missing = []
 
-        # Location is critical
+        # Location is critical - can't generate without it
         if not prefs.location.address:
             missing.append("location")
 
-        # Child age is critical if children are involved
-        if not prefs.child_age and (
-            prefs.activity_type and any(word in (prefs.activity_type or "").lower()
-                for word in ["子", "child", "kid", "family", "家族"])
-        ):
-            missing.append("child_age")
+        # Activity type is critical for relevant recommendations (室内 vs 公園)
+        if not prefs.activity_type:
+            missing.append("activity_type")
 
-        # Transportation affects what we can recommend
+        # Transportation affects venue accessibility and parking
         if not prefs.transportation:
             missing.append("transportation")
 
-        # Travel time defines the range
-        if not prefs.travel_time:
-            missing.append("travel_time")
+        # Child age affects venue appropriateness
+        if not prefs.child_age:
+            missing.append("child_age")
+
+        # Meals help create complete day plans
+        if prefs.meals is None:
+            missing.append("meals")
 
         return missing
 

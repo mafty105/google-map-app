@@ -1270,94 +1270,42 @@ async def send_message_stream(request: ChatMessageRequest):
         )
 
     # Add user message to history
-    conversation_manager.add_message(session_id, "user", user_message)
+    conversation_manager.add_user_message(session_id, user_message)
 
     async def event_generator():
         """Generator for Server-Sent Events."""
         try:
-            # Process message and get response/enrichment
-            response_text, enriched_places, routes, origin_location = await _process_user_message(
-                session_id, user_message
-            )
+            # Use the existing response generation logic
+            response_text, quick_replies_list, enriched_places, routes = _generate_response(session, user_message)
 
-            # Check if this response should be streamed
-            # Only stream LLM-generated responses, not quick system messages
-            should_stream = len(response_text) > 50 and session.state in [
-                ConversationState.INITIAL,
-                ConversationState.GATHERING_PREFERENCES,
-                ConversationState.GENERATING_PLAN,
-                ConversationState.PRESENTING_PLAN,
-            ]
+            # Add assistant response to history
+            conversation_manager.add_assistant_message(session_id, response_text)
 
-            if should_stream:
-                # Stream the response using Vertex AI streaming
-                prefs = session.user_preferences
-
-                # Build prompt based on current state
-                if session.state == ConversationState.GENERATING_PLAN:
-                    from app.services.prompts import PromptTemplates
-
-                    # Get location
-                    location_dict = _convert_location_to_dict(prefs.location)
-
-                    prompt = PromptTemplates.generate_travel_plan(
-                        location=location_dict["address"],
-                        travel_time_minutes=prefs.travel_time.value if prefs.travel_time else 60,
-                        activity_type=prefs.activity_type,
-                        child_age=prefs.child_age,
-                        transportation=prefs.transportation,
-                        special_requirements=prefs.special_requirements or [],
-                    )
-
-                    # Stream from Vertex AI
-                    async for chunk in _async_wrap_generator(
-                        vertex_ai_service.generate_content_stream(
-                            prompt,
-                            use_grounding=True,
-                            latitude=location_dict["lat"],
-                            longitude=location_dict["lng"],
-                        )
-                    ):
-                        if chunk["text"]:
-                            # Send text chunk
-                            yield f"data: {json.dumps({'type': 'text', 'content': chunk['text']})}\n\n"
-
-                        if chunk.get("done"):
-                            # Send completion with metadata
-                            completion_data = {
-                                "type": "done",
-                                "enriched_places": enriched_places,
-                                "routes": routes,
-                                "origin_location": origin_location,
-                                "quick_replies": _get_quick_replies(session.state),
-                            }
-                            yield f"data: {json.dumps(completion_data)}\n\n"
-                else:
-                    # For other states, stream character by character with delay
-                    for i in range(0, len(response_text), 5):  # Stream in chunks of 5 chars
-                        chunk_text = response_text[i:i+5]
-                        yield f"data: {json.dumps({'type': 'text', 'content': chunk_text})}\n\n"
-
-                    # Send completion
-                    completion_data = {
-                        "type": "done",
-                        "enriched_places": enriched_places,
-                        "routes": routes,
-                        "origin_location": origin_location,
-                        "quick_replies": _get_quick_replies(session.state),
+            # Get origin location
+            origin_location = None
+            if session and session.user_preferences and session.user_preferences.location:
+                loc = session.user_preferences.location
+                if loc.lat and loc.lng:
+                    origin_location = {
+                        "lat": loc.lat,
+                        "lng": loc.lng,
+                        "address": loc.address
                     }
-                    yield f"data: {json.dumps(completion_data)}\n\n"
-            else:
-                # For short messages, send all at once
-                yield f"data: {json.dumps({'type': 'text', 'content': response_text})}\n\n"
-                completion_data = {
-                    "type": "done",
-                    "enriched_places": enriched_places,
-                    "routes": routes,
-                    "origin_location": origin_location,
-                    "quick_replies": _get_quick_replies(session.state),
-                }
-                yield f"data: {json.dumps(completion_data)}\n\n"
+
+            # Stream the response character by character
+            for i in range(0, len(response_text), 10):  # Stream in chunks of 10 chars
+                chunk_text = response_text[i:i+10]
+                yield f"data: {json.dumps({'type': 'text', 'content': chunk_text})}\n\n"
+
+            # Send completion
+            completion_data = {
+                "type": "done",
+                "enriched_places": enriched_places,
+                "routes": routes,
+                "origin_location": origin_location,
+                "quick_replies": quick_replies_list,
+            }
+            yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
             logger.error(f"Error in streaming: {e}", exc_info=True)
@@ -1376,9 +1324,3 @@ async def send_message_stream(request: ChatMessageRequest):
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
-
-
-async def _async_wrap_generator(sync_generator):
-    """Wrap a synchronous generator to work with async."""
-    for item in sync_generator:
-        yield item

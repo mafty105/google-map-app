@@ -506,21 +506,21 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             logger.info("Matched activity_type keyword: どちらでもよい")
 
         # Handle transportation keywords
-        if "車" in user_message or "car" in user_message.lower():
-            if "ある" in user_message or "あり" in user_message or "使える" in user_message or user_message.strip() == "車":
-                conversation_manager.update_preferences(
-                    session.session_id,
-                    transportation="car"
-                )
-                keyword_matched = True
-                logger.info("Matched transportation keyword: car")
-        elif "電車" in user_message or "公共交通" in user_message or "バス" in user_message or "電車・バス" in user_message:
+        # Check for public transportation first to avoid matching "車" in "電車"
+        if "電車" in user_message or "公共交通" in user_message or "バス" in user_message or "電車・バス" in user_message:
             conversation_manager.update_preferences(
                 session.session_id,
                 transportation="public"
             )
             keyword_matched = True
             logger.info("Matched transportation keyword: public")
+        elif user_message.strip() == "車" or ("車" in user_message and ("ある" in user_message or "あり" in user_message or "使える" in user_message)):
+            conversation_manager.update_preferences(
+                session.session_id,
+                transportation="car"
+            )
+            keyword_matched = True
+            logger.info("Matched transportation keyword: car")
 
         # Handle meals keywords
         if "昼食" in user_message and "夕食" in user_message:
@@ -935,19 +935,26 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 prefs = conversation_manager.get_session(session.session_id).user_preferences
 
         # Store transportation if provided
-        if "車" in user_message or "car" in user_message.lower():
-            if "ある" in user_message or "あり" in user_message or "使える" in user_message:
-                conversation_manager.update_preferences(
-                    session.session_id,
-                    transportation="car"
-                )
-            elif "ない" in user_message or "なし" in user_message:
-                conversation_manager.update_preferences(
-                    session.session_id,
-                    transportation="public"
-                )
+        # Check for public transportation first to avoid matching "車" in "電車"
+        if "電車" in user_message or "公共交通" in user_message or "バス" in user_message:
+            conversation_manager.update_preferences(
+                session.session_id,
+                transportation="public"
+            )
             prefs = conversation_manager.get_session(session.session_id).user_preferences
-        elif "電車" in user_message or "公共交通" in user_message or "バス" in user_message:
+        elif user_message.strip() == "車":
+            conversation_manager.update_preferences(
+                session.session_id,
+                transportation="car"
+            )
+            prefs = conversation_manager.get_session(session.session_id).user_preferences
+        elif "車" in user_message and ("ある" in user_message or "あり" in user_message or "使える" in user_message):
+            conversation_manager.update_preferences(
+                session.session_id,
+                transportation="car"
+            )
+            prefs = conversation_manager.get_session(session.session_id).user_preferences
+        elif "車" in user_message and ("ない" in user_message or "なし" in user_message):
             conversation_manager.update_preferences(
                 session.session_id,
                 transportation="public"
@@ -1077,6 +1084,42 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
         # Debug logging to diagnose state issues
         logger.info(f"PRESENTING_PLAN state - message: '{user_message[:50]}'")
         logger.info(f"Preferences: activity={prefs.activity_type}, meals={prefs.meals}, age={prefs.child_age}, time={prefs.travel_time}, transport={prefs.transportation}")
+
+        # Check if user is starting a completely new request
+        # Detect: coordinates, location with travel time, etc.
+        import re
+        is_new_request = False
+
+        # Check for coordinates pattern
+        if re.search(r'緯度:\s*(-?\d+\.\d+).*経度:\s*(-?\d+\.\d+)', user_message):
+            is_new_request = True
+            logger.info("Detected new request: coordinates pattern")
+        # Check for location + travel time pattern (e.g., "Xから30分", "Y駅から1時間")
+        elif re.search(r'(から|より).*(分|時間)', user_message) and len(user_message) > 10:
+            is_new_request = True
+            logger.info("Detected new request: location + travel time pattern")
+
+        if is_new_request:
+            logger.info("User is starting a new request - resetting session to INITIAL state")
+            # Reset preferences
+            conversation_manager.update_preferences(
+                session.session_id,
+                location=None,
+                travel_time=None,
+                activity_type=None,
+                meals=None,
+                child_age=None,
+                transportation=None,
+                shown_place_ids=[],
+                spots_request_count=0
+            )
+            # Transition to INITIAL state
+            conversation_manager.transition_state(
+                session.session_id,
+                ConversationState.INITIAL
+            )
+            # Re-process the message in INITIAL state
+            return _generate_response(session, user_message)
 
         # Validate that we actually have all required preferences
         # If not, we're in wrong state - transition back to GATHERING_PREFERENCES

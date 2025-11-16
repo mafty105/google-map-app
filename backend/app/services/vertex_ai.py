@@ -39,6 +39,130 @@ class VertexAIService:
             logger.error(f"Failed to initialize Vertex AI: {e}")
             raise
 
+    def generate_content_stream(
+        self,
+        prompt: str,
+        use_grounding: bool = True,
+        temperature: float | None = None,
+        max_output_tokens: int | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ):
+        """
+        Generate content using Vertex AI with streaming (yields chunks as they arrive).
+
+        Args:
+            prompt: The prompt to send to the model
+            use_grounding: Whether to enable Google Maps grounding
+            temperature: Generation temperature (default from settings)
+            max_output_tokens: Max tokens to generate (default from settings)
+            latitude: Optional latitude for location-based search
+            longitude: Optional longitude for location-based search
+
+        Yields:
+            Dict with keys:
+                - text: Generated text chunk
+                - grounding_metadata: Grounding metadata (only in final chunk)
+                - done: True for final chunk
+
+        Raises:
+            Exception: If the API call fails
+        """
+        try:
+            # Configure generation settings
+            config_params = {
+                "temperature": temperature or settings.vertex_ai_temperature,
+                "max_output_tokens": max_output_tokens or settings.vertex_ai_max_output_tokens,
+            }
+
+            # Configure Google Maps grounding if enabled
+            if use_grounding:
+                config_params["tools"] = [
+                    Tool(google_maps=GoogleMaps(enable_widget=False))
+                ]
+                logger.debug("Google Maps grounding enabled")
+
+                # Add location config if lat/lng provided
+                if latitude is not None and longitude is not None:
+                    config_params["tool_config"] = types.ToolConfig(
+                        retrieval_config=types.RetrievalConfig(
+                            lat_lng=types.LatLng(
+                                latitude=latitude,
+                                longitude=longitude,
+                            ),
+                            language_code="ja_JP",
+                        ),
+                    )
+                    logger.debug(f"Location set to: ({latitude}, {longitude})")
+
+            config = GenerateContentConfig(**config_params)
+
+            # Generate content with streaming
+            logger.debug(f"Generating streaming content with prompt length: {len(prompt)}")
+
+            response_stream = self.client.models.generate_content_stream(
+                model=settings.vertex_ai_model,
+                contents=prompt,
+                config=config,
+            )
+
+            full_text = ""
+            grounding_metadata = None
+
+            # Stream chunks
+            for chunk in response_stream:
+                if chunk.text:
+                    full_text += chunk.text
+                    yield {
+                        "text": chunk.text,
+                        "grounding_metadata": None,
+                        "done": False,
+                    }
+
+            # Extract grounding metadata from final response
+            if hasattr(response_stream, "grounding_metadata") and response_stream.grounding_metadata:
+                grounding_metadata = {
+                    "grounding_chunks": [],
+                    "grounding_supports": [],
+                }
+
+                if hasattr(response_stream.grounding_metadata, "grounding_chunks"):
+                    for chunk in response_stream.grounding_metadata.grounding_chunks:
+                        chunk_dict = {}
+                        if hasattr(chunk, "web") and chunk.web:
+                            chunk_dict["web"] = {
+                                "uri": chunk.web.uri if hasattr(chunk.web, "uri") else None,
+                                "title": chunk.web.title if hasattr(chunk.web, "title") else None,
+                            }
+                        grounding_metadata["grounding_chunks"].append(chunk_dict)
+
+                if hasattr(response_stream.grounding_metadata, "grounding_supports"):
+                    for support in response_stream.grounding_metadata.grounding_supports:
+                        support_dict = {}
+                        if hasattr(support, "segment"):
+                            support_dict["segment"] = {
+                                "start_index": support.segment.start_index if hasattr(support.segment, "start_index") else None,
+                                "end_index": support.segment.end_index if hasattr(support.segment, "end_index") else None,
+                            }
+                        if hasattr(support, "grounding_chunk_indices"):
+                            support_dict["chunk_indices"] = list(support.grounding_chunk_indices)
+                        grounding_metadata["grounding_supports"].append(support_dict)
+
+                logger.info(f"Extracted grounding metadata: {len(grounding_metadata['grounding_chunks'])} chunks, {len(grounding_metadata['grounding_supports'])} supports")
+
+            # Final chunk with metadata
+            yield {
+                "text": "",
+                "grounding_metadata": grounding_metadata,
+                "done": True,
+            }
+
+            logger.info(f"Streaming completed, total length: {len(full_text)}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate streaming content: {e}")
+            raise
+
     def generate_content(
         self,
         prompt: str,

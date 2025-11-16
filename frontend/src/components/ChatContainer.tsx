@@ -301,12 +301,13 @@ export default function ChatContainer() {
               {/* Messages */}
               {messages.map((msg, index) => (
                 <ChatMessage
-                  key={index}
+                  key={msg.id || index}
                   message={msg.text}
                   isUser={msg.isUser}
                   timestamp={msg.timestamp}
                   enrichedPlaces={msg.enrichedPlaces}
                   onPlaceClick={handlePlaceClick}
+                  isStreaming={msg.isStreaming}
                 />
               ))}
 

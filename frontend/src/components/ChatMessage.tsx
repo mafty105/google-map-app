@@ -13,6 +13,7 @@ interface ChatMessageProps {
   timestamp: string;
   enrichedPlaces?: EnrichedPlace[];
   onPlaceClick?: (placeId: string) => void;
+  isStreaming?: boolean;
 }
 
 // Format timestamp to show time (HH:MM)
@@ -30,6 +31,7 @@ export default function ChatMessage({
   timestamp,
   enrichedPlaces,
   onPlaceClick,
+  isStreaming,
 }: ChatMessageProps) {
   const hasRichContent = !isUser && enrichedPlaces && enrichedPlaces.length > 0;
 
@@ -55,7 +57,29 @@ export default function ChatMessage({
           {message && (
             <p className={`text-base leading-relaxed whitespace-pre-wrap ${hasRichContent ? '' : ''}`}>
               {message}
+              {/* Streaming cursor */}
+              {isStreaming && (
+                <span className="inline-block ml-1 w-2 h-4 bg-blue-600 animate-pulse"></span>
+              )}
             </p>
+          )}
+
+          {/* Empty streaming placeholder */}
+          {!message && isStreaming && (
+            <div className="flex gap-1">
+              <div
+                className="w-2 h-2 bg-slate-500 rounded-full animate-bounce"
+                style={{ animationDelay: '0ms' }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-slate-500 rounded-full animate-bounce"
+                style={{ animationDelay: '150ms' }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-slate-500 rounded-full animate-bounce"
+                style={{ animationDelay: '300ms' }}
+              ></div>
+            </div>
           )}
 
           {/* Rich content (places) */}

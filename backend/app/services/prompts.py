@@ -255,6 +255,27 @@ JSON形式で返答してください:
         if latitude and longitude:
             coords_info = f"\n（座標: {latitude}, {longitude}）"
 
+        # Format activity type requirement based on weather consideration
+        activity_requirement = ""
+        if activity_type == "室内":
+            activity_requirement = """
+5. **室内施設を優先**：天候に左右されない室内施設のみを提案してください
+   - 推奨：博物館、科学館、水族館、美術館、室内遊び場、ショッピングモール、図書館など
+   - 避ける：公園、動物園、遊園地などの屋外施設"""
+        elif activity_type == "屋外":
+            activity_requirement = """
+5. **屋外施設を優先**：晴れた日に楽しめる屋外施設のみを提案してください
+   - 推奨：公園、遊び場、動物園、植物園、テーマパーク、自然公園など
+   - 避ける：博物館、科学館などの純粋な室内施設"""
+        elif activity_type == "どちらでもよい":
+            activity_requirement = """
+5. **室内・屋外をバランスよく**：天候に関わらず楽しめるよう、室内と屋外の施設を組み合わせて提案してください
+   - 例：室内施設1つ + 屋外施設1つ + どちらでも楽しめる施設1つ"""
+        else:
+            # Legacy activity types (if any remain)
+            activity_requirement = f"""
+5. {activity_type}に適した施設を優先"""
+
         return f"""{PromptTemplates.SYSTEM_INSTRUCTION}
 
 週末の家族向けお出かけプランを作成してください。
@@ -269,7 +290,7 @@ JSON形式で返答してください:
 1. **実在する場所のみ提案**（Google Mapsで確認可能な施設）
 2. 家族で楽しめる安全な場所
 3. {travel_time}分以内で到達可能な場所
-{f"4. 車でアクセスしやすく、駐車場がある場所を優先" if transportation == "car" else "4. 駅から近く、公共交通機関でアクセスしやすい場所を優先"}
+{f"4. 車でアクセスしやすく、駐車場がある場所を優先" if transportation == "car" else "4. 駅から近く、公共交通機関でアクセスしやすい場所を優先"}{activity_requirement}
 
 ## プラン内容
 以下の形式で**3つの場所**を提案してください：

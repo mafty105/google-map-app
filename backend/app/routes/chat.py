@@ -349,58 +349,53 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             # Transition to FREE_INPUT or directly to plan generation
             session = conversation_manager.get_session(session.session_id)
 
-            # Check if we can generate plan now
-            if extracted.get("enough_to_generate") and conversation_manager.has_sufficient_preferences(session):
-                # Try to generate plan directly
-                conversation_manager.transition_state(
-                    session.session_id,
-                    ConversationState.GENERATING_PLAN
-                )
-                # Re-call _generate_response to handle plan generation
-                return _generate_response(session, user_message)
-            else:
-                # Need more info - transition to FREE_INPUT
+            # Always check for missing critical info before generating
+            # We want to ask detailed questions to improve plan quality
+            missing_info = conversation_manager.get_critical_missing_info(session)
+
+            if missing_info and len(missing_info) > 0:
+                # Need more info - transition to FREE_INPUT and ask questions
                 conversation_manager.transition_state(
                     session.session_id,
                     ConversationState.FREE_INPUT
                 )
 
-                # Get critical missing info
-                missing_info = conversation_manager.get_critical_missing_info(session)
-                if missing_info:
-                    # Generate a clarifying question
-                    from app.services.prompts import PromptTemplates
-                    prefs_dict = {
-                        "location": {"address": session.user_preferences.location.address},
-                        "travel_time": session.user_preferences.travel_time.value if session.user_preferences.travel_time else None,
-                        "activity_type": session.user_preferences.activity_type,
-                        "child_age": session.user_preferences.child_age,
-                    }
+                # Ask specific questions based on first missing item
+                priority_item = missing_info[0]
+                quick_replies = []
 
-                    # For now, use a simple question based on first missing item
-                    priority_item = missing_info[0]
+                if priority_item == "location":
+                    question = "どちらから出発されますか？"
+                    quick_replies = []
+                elif priority_item == "activity_type":
+                    question = "天候も考慮して、室内と屋外どちらがよいですか？"
+                    quick_replies = ["屋外（公園・遊び場など）", "室内（博物館・科学館など）", "どちらでもよい"]
+                elif priority_item == "transportation":
+                    question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
+                    quick_replies = ["車", "電車・バス"]
+                elif priority_item == "child_age":
+                    question = "お子様は何歳ですか？"
+                    quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
+                elif priority_item == "meals":
+                    question = "昼食や夕食はお取りになりますか？"
+                    quick_replies = ["昼食", "夕食", "両方", "食事なし"]
+                elif priority_item == "travel_time":
+                    question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
+                    quick_replies = ["30分以内", "1時間以内", "2時間以内"]
+                else:
+                    question = "他に希望はありますか？"
                     quick_replies = []
 
-                    if priority_item == "location":
-                        question = "どちらから出発されますか？"
-                        quick_replies = []
-                    elif priority_item == "child_age":
-                        question = "お子様は何歳ですか？"
-                        quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                    elif priority_item == "transportation":
-                        question = "移動手段は車と公共交通機関、どちらをご利用予定ですか？"
-                        quick_replies = ["車", "電車・バス"]
-                    elif priority_item == "travel_time":
-                        question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
-                        quick_replies = ["30分以内", "1時間以内", "2時間以内"]
-                    else:
-                        question = "他に希望はありますか？"
-                        quick_replies = []
-
-                    return (question, quick_replies, None)
-                else:
-                    # Shouldn't reach here, but just in case
-                    return ("ありがとうございます。プランを作成しますね。", [], None)
+                logger.info(f"INITIAL state: asking for {priority_item}")
+                return (question, quick_replies, None)
+            else:
+                # All required info collected - generate plan
+                logger.info("INITIAL state: all info collected, generating plan")
+                conversation_manager.transition_state(
+                    session.session_id,
+                    ConversationState.GENERATING_PLAN
+                )
+                return _generate_response(session, user_message)
 
         except Exception as e:
             logger.error(f"Failed to extract preferences: {e}")

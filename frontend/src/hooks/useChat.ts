@@ -90,12 +90,27 @@ export function useChat(sessionId: string | null) {
         const decoder = new TextDecoder();
         let buffer = '';
         let accumulatedText = '';
+        let lastUpdateTime = 0;
+        const UPDATE_THROTTLE_MS = 50; // Update UI at most every 50ms
 
         // Read stream
         while (true) {
           const { done, value } = await reader.read();
 
           if (done) {
+            // Final update with any remaining text
+            if (accumulatedText) {
+              setMessages((prev) => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg?.id === assistantMessageId && lastMsg.text !== accumulatedText) {
+                  return [
+                    ...prev.slice(0, -1),
+                    { ...lastMsg, text: accumulatedText }
+                  ];
+                }
+                return prev;
+              });
+            }
             break;
           }
 
@@ -116,14 +131,29 @@ export function useChat(sessionId: string | null) {
                   // Accumulate text chunks
                   accumulatedText += data.content;
 
-                  // Update message with accumulated text
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === assistantMessageId
-                        ? { ...msg, text: accumulatedText }
-                        : msg
-                    )
-                  );
+                  // Throttle UI updates to improve performance
+                  const now = Date.now();
+                  if (now - lastUpdateTime >= UPDATE_THROTTLE_MS) {
+                    lastUpdateTime = now;
+
+                    // Update message with accumulated text (optimized with direct reference)
+                    setMessages((prev) => {
+                      const lastMsg = prev[prev.length - 1];
+                      if (lastMsg?.id === assistantMessageId) {
+                        // Optimize: only update last message if it matches
+                        return [
+                          ...prev.slice(0, -1),
+                          { ...lastMsg, text: accumulatedText }
+                        ];
+                      }
+                      // Fallback: find and update (shouldn't happen normally)
+                      return prev.map((msg) =>
+                        msg.id === assistantMessageId
+                          ? { ...msg, text: accumulatedText }
+                          : msg
+                      );
+                    });
+                  }
                 } else if (data.type === 'done') {
                   // Finalize message
                   setMessages((prev) =>

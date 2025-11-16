@@ -56,6 +56,9 @@ export interface RouteInfo {
     html_instructions: string;
     distance: { text: string; value: number };
     duration: { text: string; value: number };
+    start_location: { lat: number; lng: number };
+    end_location: { lat: number; lng: number };
+    polyline?: { points: string };
   }>;
 }
 

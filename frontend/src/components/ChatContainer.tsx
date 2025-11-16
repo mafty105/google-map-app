@@ -95,17 +95,31 @@ export default function ChatContainer() {
         }));
 
       setMapMarkers(markers);
-
-      // Create routes from markers for map display
-      // This creates a single route through all places
-      if (markers.length > 1) {
-        setMapRoutes([markers]);
-      }
     } else {
       setMapMarkers([]); // Clear markers when list is cleared
-      setMapRoutes([]); // Clear routes as well
     }
   }, [enrichedPlaces]);
+
+  // Update map routes when routes data changes from backend
+  useEffect(() => {
+    if (routes && routes.length > 0) {
+      // Extract coordinates from route steps
+      const routePaths = routes.map(route => {
+        const path: Array<{lat: number; lng: number}> = [];
+        route.steps.forEach(step => {
+          path.push(step.start_location);
+        });
+        // Add the last end_location
+        if (route.steps.length > 0) {
+          path.push(route.steps[route.steps.length - 1].end_location);
+        }
+        return path;
+      });
+      setMapRoutes(routePaths);
+    } else {
+      setMapRoutes([]);
+    }
+  }, [routes]);
 
   // Combine errors from session and chat
   const error = sessionError || chatError;

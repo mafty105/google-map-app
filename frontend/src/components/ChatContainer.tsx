@@ -305,6 +305,8 @@ export default function ChatContainer() {
                   message={msg.text}
                   isUser={msg.isUser}
                   timestamp={msg.timestamp}
+                  enrichedPlaces={msg.enrichedPlaces}
+                  onPlaceClick={handlePlaceClick}
                 />
               ))}
 

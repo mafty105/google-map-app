@@ -181,6 +181,28 @@ export const chatAPI = {
   ): Promise<SessionHistoryResponse> => {
     return fetchAPI<SessionHistoryResponse>(`/api/chat/session/${sessionId}`);
   },
+
+  /**
+   * Get navigation route from origin to destination
+   */
+  getNavigationRoute: async (
+    originLat: number,
+    originLng: number,
+    destLat: number,
+    destLng: number,
+    mode: string = 'transit',
+  ): Promise<RouteInfo> => {
+    return fetchAPI<RouteInfo>('/api/chat/navigate', {
+      method: 'POST',
+      body: JSON.stringify({
+        origin_lat: originLat,
+        origin_lng: originLng,
+        dest_lat: destLat,
+        dest_lng: destLng,
+        mode,
+      }),
+    });
+  },
 };
 
 /**

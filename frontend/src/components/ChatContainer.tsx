@@ -13,6 +13,7 @@ import { useSession } from '../hooks/useSession';
 import { useChat } from '../hooks/useChat';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useMobileDetection } from '../hooks/useMobileDetection';
+import { chatAPI } from '../services/api';
 
 interface Location {
   lat: number;
@@ -48,7 +49,7 @@ export default function ChatContainer() {
   });
   const [mapMarkers, setMapMarkers] = useState<Location[]>([]);
   const [mapRoutes, setMapRoutes] = useState<Location[][]>([]);
-  const [directionsResult, setDirectionsResult] = useState<google.maps.DirectionsResult | null>(null);
+  const [savedPlanRoutes, setSavedPlanRoutes] = useState<Location[][]>([]); // Store plan routes when showing navigation
 
   // Drawer state
   const [selectedPlaceIndex, setSelectedPlaceIndex] = useState<number | null>(null);
@@ -80,7 +81,8 @@ export default function ChatContainer() {
           '例：「子供と一緒に動物園に行きたい」「新宿から1時間以内で遊べる場所」',
       );
     }
-  }, [sessionId, messages.length, addGreeting]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, messages.length]);
 
   // Update map markers when enriched places change
   useEffect(() => {
@@ -167,25 +169,13 @@ export default function ChatContainer() {
   };
 
   const handleModifyPlan = () => {
-    setCurrentPlan(null);
-    setMessages((prev) => [
-      ...prev,
-      {
-        text: 'プランを修正します。どの部分を変更したいですか？',
-        isUser: false,
-      },
-    ]);
+    // TODO: Implement plan modification
+    sendMessage('プランを修正したいです');
   };
 
   const handleStartOver = () => {
-    setCurrentPlan(null);
-    setMessages([
-      {
-        text: 'こんにちは！週末のお出かけプランをお手伝いします。\nどこからお出かけされますか？',
-        isUser: false,
-      },
-    ]);
-    setQuickReplies([]);
+    // TODO: Implement start over functionality
+    window.location.reload();
   };
 
   const handlePlaceClick = (placeId: string) => {
@@ -198,8 +188,13 @@ export default function ChatContainer() {
 
   const handleCloseDrawer = () => {
     setSelectedPlaceIndex(null);
-    setDirectionsResult(null); // Clear route when drawer closes
     setNavigationError(null);
+
+    // Restore plan routes when drawer closes
+    if (savedPlanRoutes.length > 0) {
+      setMapRoutes(savedPlanRoutes);
+      setSavedPlanRoutes([]);
+    }
   };
 
   const handleNavigate = async (placeId: string, placeName: string, lat: number, lng: number) => {
@@ -212,7 +207,7 @@ export default function ChatContainer() {
       return;
     }
 
-    // Desktop: Show route on current map
+    // Desktop: Get route from backend and display with polyline
     setIsNavigating(true);
 
     // Request user location if not already available
@@ -237,21 +232,36 @@ export default function ChatContainer() {
       return;
     }
 
-    // Calculate directions using Google Maps DirectionsService
+    // Get navigation route from backend
     try {
-      const directionsService = new google.maps.DirectionsService();
+      const routeData = await chatAPI.getNavigationRoute(
+        userLocation.lat,
+        userLocation.lng,
+        lat,
+        lng,
+        'transit', // Default to transit, can be made dynamic later
+      );
 
-      const result = await directionsService.route({
-        origin: { lat: userLocation.lat, lng: userLocation.lng },
-        destination: { lat, lng },
-        travelMode: google.maps.TravelMode.TRANSIT,
-        provideRouteAlternatives: false,
+      // Convert route steps to polyline coordinates
+      const routePath: Array<{ lat: number; lng: number }> = [];
+      routeData.steps.forEach((step) => {
+        routePath.push(step.start_location);
       });
+      // Add the last end_location
+      if (routeData.steps.length > 0) {
+        routePath.push(routeData.steps[routeData.steps.length - 1].end_location);
+      }
 
-      setDirectionsResult(result);
+      // Save current plan routes before replacing with navigation route
+      if (mapRoutes.length > 0 && savedPlanRoutes.length === 0) {
+        setSavedPlanRoutes(mapRoutes);
+      }
+
+      // Set navigation route (this will replace plan routes temporarily)
+      setMapRoutes([routePath]);
       setIsNavigating(false);
     } catch (error) {
-      console.error('Directions error:', error);
+      console.error('Navigation error:', error);
       setNavigationError('ルートの検索に失敗しました。もう一度お試しください。');
       setIsNavigating(false);
     }
@@ -259,11 +269,11 @@ export default function ChatContainer() {
 
   // Effect to handle geolocation completion for desktop navigation
   useEffect(() => {
-    if (!isMobile && isNavigating && userLocation && !directionsResult && !navigationError) {
+    if (!isMobile && isNavigating && userLocation && !navigationError) {
       // Retry navigation now that we have user location
       // This will happen automatically when userLocation updates
     }
-  }, [userLocation, isMobile, isNavigating, directionsResult, navigationError]);
+  }, [userLocation, isMobile, isNavigating, navigationError]);
 
   const handlePreviousPlace = () => {
     if (selectedPlaceIndex !== null && selectedPlaceIndex > 0) {
@@ -453,7 +463,6 @@ export default function ChatContainer() {
           <MapDisplay
             markers={mapMarkers}
             routes={mapRoutes}
-            directionsResult={directionsResult}
             onMarkerClick={(index) => setSelectedPlaceIndex(index)}
           />
         </div>

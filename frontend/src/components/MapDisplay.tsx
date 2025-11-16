@@ -14,7 +14,6 @@ interface MapDisplayProps {
   center?: Location;
   markers?: Location[];
   routes?: Location[][];
-  directionsResult?: google.maps.DirectionsResult | null;
   zoom?: number;
   onMarkerClick?: (index: number) => void; // Callback when marker is clicked
 }
@@ -30,15 +29,12 @@ export default function MapDisplay({
   center,
   markers = [],
   routes = [],
-  directionsResult = null,
   zoom = 15,
   onMarkerClick,
 }: MapDisplayProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [mapMarkers, setMapMarkers] = useState<google.maps.Marker[]>([]);
-  const [directionsRenderer, setDirectionsRenderer] =
-    useState<google.maps.DirectionsRenderer | null>(null);
   const [polylines, setPolylines] = useState<google.maps.Polyline[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
@@ -103,18 +99,6 @@ export default function MapDisplay({
           });
 
           setMap(newMap);
-
-          // Initialize directions renderer
-          const renderer = new google.maps.DirectionsRenderer({
-            map: newMap,
-            suppressMarkers: false,
-            polylineOptions: {
-              strokeColor: '#1d4ed8', // blue-700
-              strokeWeight: 4,
-              strokeOpacity: 0.8,
-            },
-          });
-          setDirectionsRenderer(renderer);
         }
       })
       .catch((err) => {
@@ -242,19 +226,6 @@ export default function MapDisplay({
 
     setPolylines(newPolylines);
   }, [map, routes]);
-
-  // Update directions when directionsResult prop changes (for navigation feature)
-  useEffect(() => {
-    if (!directionsRenderer) return;
-
-    if (directionsResult) {
-      // Show the directions result from navigation
-      directionsRenderer.setDirections(directionsResult);
-    } else {
-      // Clear directions when null (drawer closed or no navigation active)
-      directionsRenderer.setDirections({ routes: [] } as google.maps.DirectionsResult);
-    }
-  }, [directionsRenderer, directionsResult]);
 
   if (error) {
     return (

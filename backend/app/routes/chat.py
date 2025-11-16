@@ -4,6 +4,7 @@ import logging
 import re
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from app.models.api import (
     ChatMessageRequest,
@@ -298,6 +299,49 @@ def _calculate_routes(
         # Return empty list on error - routes are optional
 
     return routes
+
+
+class NavigationRequest(BaseModel):
+    """Request body for navigation route."""
+
+    origin_lat: float
+    origin_lng: float
+    dest_lat: float
+    dest_lng: float
+    mode: str = "transit"
+
+
+@router.post("/navigate")
+async def get_navigation_route(request: NavigationRequest):
+    """Get navigation route from origin to destination.
+
+    Args:
+        request: Navigation request with origin/destination coordinates and mode
+
+    Returns:
+        Route information with steps
+    """
+    try:
+        routes = google_maps_service.get_directions(
+            origin=(request.origin_lat, request.origin_lng),
+            destination=(request.dest_lat, request.dest_lng),
+            mode=request.mode
+        )
+
+        if not routes or len(routes) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No route found"
+            )
+
+        return routes[0]  # Return first route
+
+    except Exception as e:
+        logger.error(f"Navigation route error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get navigation route: {str(e)}"
+        )
 
 
 @router.get("/session/{session_id}", response_model=SessionHistoryResponse)

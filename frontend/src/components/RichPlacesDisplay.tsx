@@ -1,4 +1,4 @@
-import InlinePlaceCard from './InlinePlaceCard';
+import EnrichedPlaceCard from './EnrichedPlaceCard';
 import type { EnrichedPlace } from '../services/api';
 
 interface RichPlacesDisplayProps {
@@ -7,8 +7,8 @@ interface RichPlacesDisplayProps {
 }
 
 /**
- * RichPlacesDisplay - Grid display of enriched places within chat messages
- * Shows a visually appealing grid of place cards directly in the conversation
+ * RichPlacesDisplay - List display of enriched places within chat messages
+ * Shows a compact list of place cards directly in the conversation
  */
 export default function RichPlacesDisplay({ places, onPlaceClick }: RichPlacesDisplayProps) {
   if (!places || places.length === 0) {
@@ -25,16 +25,14 @@ export default function RichPlacesDisplay({ places, onPlaceClick }: RichPlacesDi
         </h3>
       </div>
 
-      {/* Horizontal scrollable list */}
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-        {places.map((place, index) => (
-          <div key={place.place_id} className="flex-shrink-0" style={{ width: '320px' }}>
-            <InlinePlaceCard
-              place={place}
-              index={index + 1}
-              onClick={onPlaceClick}
-            />
-          </div>
+      {/* Vertical list */}
+      <div className="space-y-3">
+        {places.map((place) => (
+          <EnrichedPlaceCard
+            key={place.place_id}
+            place={place}
+            onClick={onPlaceClick}
+          />
         ))}
       </div>
 

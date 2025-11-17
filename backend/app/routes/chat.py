@@ -427,9 +427,13 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             # Transition to FREE_INPUT or directly to plan generation
             session = conversation_manager.get_session(session.session_id)
 
-            # Always check for missing critical info before generating
-            # We want to ask detailed questions to improve plan quality
-            missing_info = conversation_manager.get_critical_missing_info(session)
+            # Use LLM to determine what information is missing
+            # This allows intelligent decision-making based on context
+            missing_info = vertex_ai_service.determine_missing_info(
+                user_message=user_message,
+                extracted_prefs=extracted
+            )
+            logger.info(f"LLM determined missing info: {missing_info}")
 
             if missing_info and len(missing_info) > 0:
                 # Need more info - transition to FREE_INPUT and ask questions

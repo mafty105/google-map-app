@@ -490,6 +490,81 @@ JSON形式で抽出した情報を返してください。情報がない項目�
             logger.error(f"Failed to generate travel plan: {e}")
             raise
 
+    def determine_missing_info(
+        self,
+        user_message: str,
+        extracted_prefs: dict[str, Any],
+    ) -> list[str]:
+        """
+        Use LLM to determine what information is missing for creating a good travel plan.
+
+        Returns a list of missing information categories from:
+        - location
+        - travel_time
+        - activity_type
+        - child_age
+        - transportation
+        """
+        prompt = f"""あなたは家族向けお出かけプランを作成するアシスタントです。
+ユーザーのメッセージから抽出した情報を確認し、良いプランを作るために何の情報が足りないか判断してください。
+
+【ユーザーのメッセージ】
+{user_message}
+
+【抽出済みの情報】
+- 出発地: {extracted_prefs.get('location', {}).get('address', '未設定')}
+- 移動時間: {extracted_prefs.get('travel_time', {}).get('value', '未設定')}分
+- 活動タイプ: {extracted_prefs.get('activity_type', '未設定')}
+- 子供の年齢: {extracted_prefs.get('child_age', '未設定')}
+- 交通手段: {extracted_prefs.get('transportation', '未設定')}
+
+【判断基準】
+- location: 出発地が明確か（住所または緯度経度）
+- travel_time: 移動可能時間が明確か
+- activity_type: 室内・屋外などの活動タイプの希望があるか
+- child_age: 子供の年齢がわかるか（適切な施設を提案するため）
+- transportation: 車か公共交通機関か（アクセス方法に影響）
+
+良いプランを作るために**必須で足りない情報**のみをリストアップしてください。
+すでに十分な情報がある場合は空のリストを返してください。
+
+回答は以下のJSON形式のみで返してください：
+{{"missing": ["location", "child_age"]}}
+
+または情報が十分な場合：
+{{"missing": []}}
+"""
+
+        try:
+            result = self.generate_content(
+                prompt,
+                use_grounding=False,
+                temperature=0.3,  # More deterministic
+            )
+
+            response_text = result["text"].strip()
+            logger.info(f"Missing info determination response: {response_text}")
+
+            # Parse JSON response
+            import json
+            import re
+
+            # Extract JSON from response (in case there's extra text)
+            json_match = re.search(r'\{[^}]+\}', response_text)
+            if json_match:
+                data = json.loads(json_match.group())
+                missing = data.get("missing", [])
+                logger.info(f"Determined missing info: {missing}")
+                return missing
+            else:
+                logger.warning("Could not parse missing info response, returning empty list")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to determine missing info: {e}", exc_info=True)
+            # Fallback to empty list (won't ask questions)
+            return []
+
 
 # Global service instance
 vertex_ai_service = VertexAIService()

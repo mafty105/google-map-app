@@ -25,15 +25,16 @@ export default function RichPlacesDisplay({ places, onPlaceClick }: RichPlacesDi
         </h3>
       </div>
 
-      {/* Grid of place cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {/* Horizontal scrollable list */}
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
         {places.map((place, index) => (
-          <InlinePlaceCard
-            key={place.place_id}
-            place={place}
-            index={index + 1}
-            onClick={onPlaceClick}
-          />
+          <div key={place.place_id} className="flex-shrink-0" style={{ width: '320px' }}>
+            <InlinePlaceCard
+              place={place}
+              index={index + 1}
+              onClick={onPlaceClick}
+            />
+          </div>
         ))}
       </div>
 

@@ -1,9 +1,11 @@
 """Chat API endpoints."""
 
+import json
 import logging
 import re
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.models.api import (
@@ -425,9 +427,13 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
             # Transition to FREE_INPUT or directly to plan generation
             session = conversation_manager.get_session(session.session_id)
 
-            # Always check for missing critical info before generating
-            # We want to ask detailed questions to improve plan quality
-            missing_info = conversation_manager.get_critical_missing_info(session)
+            # Use LLM to determine what information is missing
+            # This allows intelligent decision-making based on context
+            missing_info = vertex_ai_service.determine_missing_info(
+                user_message=user_message,
+                extracted_prefs=extracted
+            )
+            logger.info(f"LLM determined missing info: {missing_info}")
 
             if missing_info and len(missing_info) > 0:
                 # Need more info - transition to FREE_INPUT and ask questions
@@ -452,9 +458,6 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 elif priority_item == "child_age":
                     question = "お子様は何歳ですか？"
                     quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                elif priority_item == "meals":
-                    question = "昼食や夕食はお取りになりますか？"
-                    quick_replies = ["昼食", "夕食", "両方", "食事なし"]
                 elif priority_item == "travel_time":
                     question = "移動時間はどのくらいまで大丈夫ですか？（片道）"
                     quick_replies = ["30分以内", "1時間以内", "2時間以内"]
@@ -633,11 +636,6 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                     quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
                     logger.info(f"Asking for: {priority_item}")
                     return (question, quick_replies, None, None)
-                elif priority_item == "meals":
-                    question = "昼食や夕食はお取りになりますか？"
-                    quick_replies = ["昼食", "夕食", "両方", "食事なし"]
-                    logger.info(f"Asking for: {priority_item}")
-                    return (question, quick_replies, None, None)
                 elif priority_item == "location":
                     question = "どこから出発されますか？"
                     quick_replies = []
@@ -739,11 +737,6 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                         elif priority_item == "child_age":
                             question = "お子様は何歳ですか？"
                             quick_replies = ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"]
-                            logger.info(f"Asking after AI extraction: {priority_item}")
-                            return (question, quick_replies, None, None)
-                        elif priority_item == "meals":
-                            question = "昼食や夕食はお取りになりますか？"
-                            quick_replies = ["昼食", "夕食", "両方", "食事なし"]
                             logger.info(f"Asking after AI extraction: {priority_item}")
                             return (question, quick_replies, None, None)
                         elif priority_item == "location":
@@ -1083,7 +1076,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 None
             )
 
-        if prefs.activity_type and prefs.meals is not None and not prefs.child_age:
+        if prefs.activity_type and not prefs.child_age:
             return (
                 "お子様の年齢を教えてください。",
                 ["0-2歳", "3-5歳", "6-8歳", "9-12歳", "その他"],
@@ -1091,7 +1084,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 None
             )
 
-        if prefs.activity_type and prefs.meals is not None and prefs.child_age and not prefs.travel_time:
+        if prefs.activity_type and prefs.child_age and not prefs.travel_time:
             return (
                 "移動時間はどのくらいを想定していますか？（例: 30分、60分）",
                 ["30分", "60分", "90分"],
@@ -1099,7 +1092,7 @@ def _generate_response(session, user_message: str) -> tuple[str, list[str] | Non
                 None
             )
 
-        if prefs.activity_type and prefs.meals is not None and prefs.child_age and prefs.travel_time and not prefs.transportation:
+        if prefs.activity_type and prefs.child_age and prefs.travel_time and not prefs.transportation:
             return (
                 "車はお持ちですか？",
                 ["車あり", "車なし（公共交通機関）"],

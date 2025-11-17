@@ -39,6 +39,130 @@ class VertexAIService:
             logger.error(f"Failed to initialize Vertex AI: {e}")
             raise
 
+    def generate_content_stream(
+        self,
+        prompt: str,
+        use_grounding: bool = True,
+        temperature: float | None = None,
+        max_output_tokens: int | None = None,
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ):
+        """
+        Generate content using Vertex AI with streaming (yields chunks as they arrive).
+
+        Args:
+            prompt: The prompt to send to the model
+            use_grounding: Whether to enable Google Maps grounding
+            temperature: Generation temperature (default from settings)
+            max_output_tokens: Max tokens to generate (default from settings)
+            latitude: Optional latitude for location-based search
+            longitude: Optional longitude for location-based search
+
+        Yields:
+            Dict with keys:
+                - text: Generated text chunk
+                - grounding_metadata: Grounding metadata (only in final chunk)
+                - done: True for final chunk
+
+        Raises:
+            Exception: If the API call fails
+        """
+        try:
+            # Configure generation settings
+            config_params = {
+                "temperature": temperature or settings.vertex_ai_temperature,
+                "max_output_tokens": max_output_tokens or settings.vertex_ai_max_output_tokens,
+            }
+
+            # Configure Google Maps grounding if enabled
+            if use_grounding:
+                config_params["tools"] = [
+                    Tool(google_maps=GoogleMaps(enable_widget=False))
+                ]
+                logger.debug("Google Maps grounding enabled")
+
+                # Add location config if lat/lng provided
+                if latitude is not None and longitude is not None:
+                    config_params["tool_config"] = types.ToolConfig(
+                        retrieval_config=types.RetrievalConfig(
+                            lat_lng=types.LatLng(
+                                latitude=latitude,
+                                longitude=longitude,
+                            ),
+                            language_code="ja_JP",
+                        ),
+                    )
+                    logger.debug(f"Location set to: ({latitude}, {longitude})")
+
+            config = GenerateContentConfig(**config_params)
+
+            # Generate content with streaming
+            logger.debug(f"Generating streaming content with prompt length: {len(prompt)}")
+
+            response_stream = self.client.models.generate_content_stream(
+                model=settings.vertex_ai_model,
+                contents=prompt,
+                config=config,
+            )
+
+            full_text = ""
+            grounding_metadata = None
+
+            # Stream chunks
+            for chunk in response_stream:
+                if chunk.text:
+                    full_text += chunk.text
+                    yield {
+                        "text": chunk.text,
+                        "grounding_metadata": None,
+                        "done": False,
+                    }
+
+            # Extract grounding metadata from final response
+            if hasattr(response_stream, "grounding_metadata") and response_stream.grounding_metadata:
+                grounding_metadata = {
+                    "grounding_chunks": [],
+                    "grounding_supports": [],
+                }
+
+                if hasattr(response_stream.grounding_metadata, "grounding_chunks"):
+                    for chunk in response_stream.grounding_metadata.grounding_chunks:
+                        chunk_dict = {}
+                        if hasattr(chunk, "web") and chunk.web:
+                            chunk_dict["web"] = {
+                                "uri": chunk.web.uri if hasattr(chunk.web, "uri") else None,
+                                "title": chunk.web.title if hasattr(chunk.web, "title") else None,
+                            }
+                        grounding_metadata["grounding_chunks"].append(chunk_dict)
+
+                if hasattr(response_stream.grounding_metadata, "grounding_supports"):
+                    for support in response_stream.grounding_metadata.grounding_supports:
+                        support_dict = {}
+                        if hasattr(support, "segment"):
+                            support_dict["segment"] = {
+                                "start_index": support.segment.start_index if hasattr(support.segment, "start_index") else None,
+                                "end_index": support.segment.end_index if hasattr(support.segment, "end_index") else None,
+                            }
+                        if hasattr(support, "grounding_chunk_indices"):
+                            support_dict["chunk_indices"] = list(support.grounding_chunk_indices)
+                        grounding_metadata["grounding_supports"].append(support_dict)
+
+                logger.info(f"Extracted grounding metadata: {len(grounding_metadata['grounding_chunks'])} chunks, {len(grounding_metadata['grounding_supports'])} supports")
+
+            # Final chunk with metadata
+            yield {
+                "text": "",
+                "grounding_metadata": grounding_metadata,
+                "done": True,
+            }
+
+            logger.info(f"Streaming completed, total length: {len(full_text)}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate streaming content: {e}")
+            raise
+
     def generate_content(
         self,
         prompt: str,
@@ -365,6 +489,81 @@ JSON形式で抽出した情報を返してください。情報がない項目�
         except Exception as e:
             logger.error(f"Failed to generate travel plan: {e}")
             raise
+
+    def determine_missing_info(
+        self,
+        user_message: str,
+        extracted_prefs: dict[str, Any],
+    ) -> list[str]:
+        """
+        Use LLM to determine what information is missing for creating a good travel plan.
+
+        Returns a list of missing information categories from:
+        - location
+        - travel_time
+        - activity_type
+        - child_age
+        - transportation
+        """
+        prompt = f"""あなたは家族向けお出かけプランを作成するアシスタントです。
+ユーザーのメッセージから抽出した情報を確認し、良いプランを作るために何の情報が足りないか判断してください。
+
+【ユーザーのメッセージ】
+{user_message}
+
+【抽出済みの情報】
+- 出発地: {extracted_prefs.get('location', {}).get('address', '未設定')}
+- 移動時間: {extracted_prefs.get('travel_time', {}).get('value', '未設定')}分
+- 活動タイプ: {extracted_prefs.get('activity_type', '未設定')}
+- 子供の年齢: {extracted_prefs.get('child_age', '未設定')}
+- 交通手段: {extracted_prefs.get('transportation', '未設定')}
+
+【判断基準】
+- location: 出発地が明確か（住所または緯度経度）
+- travel_time: 移動可能時間が明確か
+- activity_type: 室内・屋外などの活動タイプの希望があるか
+- child_age: 子供の年齢がわかるか（適切な施設を提案するため）
+- transportation: 車か公共交通機関か（アクセス方法に影響）
+
+良いプランを作るために**必須で足りない情報**のみをリストアップしてください。
+すでに十分な情報がある場合は空のリストを返してください。
+
+回答は以下のJSON形式のみで返してください：
+{{"missing": ["location", "child_age"]}}
+
+または情報が十分な場合：
+{{"missing": []}}
+"""
+
+        try:
+            result = self.generate_content(
+                prompt,
+                use_grounding=False,
+                temperature=0.3,  # More deterministic
+            )
+
+            response_text = result["text"].strip()
+            logger.info(f"Missing info determination response: {response_text}")
+
+            # Parse JSON response
+            import json
+            import re
+
+            # Extract JSON from response (in case there's extra text)
+            json_match = re.search(r'\{[^}]+\}', response_text)
+            if json_match:
+                data = json.loads(json_match.group())
+                missing = data.get("missing", [])
+                logger.info(f"Determined missing info: {missing}")
+                return missing
+            else:
+                logger.warning("Could not parse missing info response, returning empty list")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to determine missing info: {e}", exc_info=True)
+            # Fallback to empty list (won't ask questions)
+            return []
 
 
 # Global service instance

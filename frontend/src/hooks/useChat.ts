@@ -9,6 +9,7 @@ export interface Message {
   text: string;
   isUser: boolean;
   timestamp: string;
+  enrichedPlaces?: EnrichedPlace[];
 }
 
 export function useChat(sessionId: string | null) {
@@ -47,16 +48,17 @@ export function useChat(sessionId: string | null) {
         // Determine what message to show
         let displayText = response.response;
 
-        // If we have enriched places, show a simple message instead of the full plan description
+        // If we have enriched places, show a simple message with rich content
         if (response.enriched_places && response.enriched_places.length > 0) {
-          displayText = `${response.enriched_places.length}件のおすすめスポットを見つけました。詳細は下のリストから各スポットをクリックしてご確認ください。`;
+          displayText = `${response.enriched_places.length}件のおすすめスポットを見つけました！`;
         }
 
-        // Add assistant response
+        // Add assistant response with enriched places attached
         const assistantMessage: Message = {
           text: displayText,
           isUser: false,
           timestamp: new Date().toISOString(),
+          enrichedPlaces: response.enriched_places || undefined,
         };
         setMessages((prev) => [...prev, assistantMessage]);
 

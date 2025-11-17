@@ -4,7 +4,6 @@ import ChatMessage from './ChatMessage';
 import QuickReplies from './QuickReplies';
 import MapDisplay from './MapDisplay';
 import PlanSummary from './PlanSummary';
-import EnrichedPlaceCard from './EnrichedPlaceCard';
 import PlaceDrawer from './PlaceDrawer';
 import AgeSelector from './AgeSelector';
 import type { TravelPlan } from '../types/plan';
@@ -247,22 +246,13 @@ export default function ChatContainer() {
     <div className="flex flex-col h-screen bg-white">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white shadow-sm">
-        <div className="w-full px-6 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-blue-700">
-              週末お出かけプランナー
-            </h1>
-            <p className="text-sm text-slate-600 mt-1">
-              家族で楽しめる週末のお出かけプランを提案します
-            </p>
-          </div>
-          {/* Demo Button */}
-          <button
-            onClick={loadMockPlan}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            デモプラン表示
-          </button>
+        <div className="w-full px-6 py-4">
+          <h1 className="text-2xl font-bold text-blue-700">
+            週末お出かけプランナー
+          </h1>
+          <p className="text-sm text-slate-600 mt-1">
+            家族で楽しめる週末のお出かけプランを提案します
+          </p>
         </div>
       </header>
 
@@ -301,10 +291,13 @@ export default function ChatContainer() {
               {/* Messages */}
               {messages.map((msg, index) => (
                 <ChatMessage
-                  key={index}
+                  key={msg.id || index}
                   message={msg.text}
                   isUser={msg.isUser}
                   timestamp={msg.timestamp}
+                  enrichedPlaces={msg.enrichedPlaces}
+                  onPlaceClick={handlePlaceClick}
+                  isStreaming={msg.isStreaming}
                 />
               ))}
 
@@ -341,24 +334,6 @@ export default function ChatContainer() {
                     onStartOver={handleStartOver}
                     onPlaceClick={handlePlaceClick}
                   />
-                </div>
-              )}
-
-              {/* Enriched Places Display */}
-              {enrichedPlaces && enrichedPlaces.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                    おすすめスポット ({enrichedPlaces.length}件)
-                  </h3>
-                  <div className="space-y-3">
-                    {enrichedPlaces.map((place) => (
-                      <EnrichedPlaceCard
-                        key={place.place_id}
-                        place={place}
-                        onClick={handlePlaceClick}
-                      />
-                    ))}
-                  </div>
                 </div>
               )}
 
